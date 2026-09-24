@@ -4,10 +4,9 @@ services:
     runtime: node
     plan: free
     region: singapore
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm run server
     healthCheckPath: /healthz
     envVars:
       - key: NODE_ENV
         value: production
-
