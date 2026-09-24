@@ -1,11 +1,43 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { TIKIS } from './game.js';
-import { START_POSITIONS, tilePosition } from './layout.js';
+import { ACTION_RADIUS, START_POSITIONS, distance2D, tilePosition } from './layout.js';
 import { tikiImageUrl } from './tikiArt.js';
 
 const PLAYER_COLORS = { coral:'#ed7965', jade:'#5db89b', sun:'#edbd58', lavender:'#9b8ad7' };
 const FLOOR_Y = .32;
+
+function textSprite(text, width=512, height=128, bubble=false) {
+  const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+  const context=canvas.getContext('2d');
+  context.fillStyle=bubble?'#fff5df':'#143b30';
+  context.beginPath();context.roundRect(5,5,width-10,height-10,24);context.fill();
+  context.strokeStyle=bubble?'#bc9d68':'#e8d39d';context.lineWidth=6;context.stroke();
+  context.fillStyle=bubble?'#243d31':'#fff5df';
+  context.font=`bold ${bubble?39:47}px sans-serif`;context.textAlign='center';context.textBaseline='middle';
+  const display=String(text).slice(0,bubble?22:25);
+  const rank=!bubble&&display.match(/^(.*)  \|(\d+)$/);
+  if(rank){
+    context.fillText(rank[1],width*.43,height/2,width*.72);
+    context.fillStyle='#f36f5e';context.fillText(`|${rank[2]}`,width*.84,height/2,width*.24);
+  }else context.fillText(display,width/2,height/2,width-35);
+  const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
+  const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,opacity:.75,depthTest:false}));
+  sprite.scale.set(bubble?2.3:1.9,bubble?.57:.47,1);
+  sprite.renderOrder=20;
+  return sprite;
+}
+
+function scoreTexture(name,total,color) {
+  const canvas=document.createElement('canvas');canvas.width=512;canvas.height=256;
+  const context=canvas.getContext('2d');
+  context.fillStyle='#17382d';context.beginPath();context.roundRect(9,9,494,238,24);context.fill();
+  context.strokeStyle=color;context.lineWidth=12;context.stroke();
+  context.fillStyle='#f7e9c3';context.textAlign='center';
+  context.font='bold 45px sans-serif';context.fillText(String(name).slice(0,20),256,93,455);
+  context.font='bold 80px sans-serif';context.fillText(`${total} 分`,256,195,455);
+  const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;return texture;
+}
 
 function rankTexture(rank) {
   const canvas = document.createElement('canvas');
@@ -45,14 +77,16 @@ function stickman(color) {
   shadow.rotation.x=-Math.PI/2;shadow.position.y=.014;group.add(shadow);
   const halo=new THREE.Mesh(new THREE.RingGeometry(.29,.36,28),new THREE.MeshBasicMaterial({color:'#ffe18b',transparent:true,opacity:.95,side:THREE.DoubleSide,depthWrite:false}));
   halo.rotation.x=-Math.PI/2;halo.position.y=.019;halo.visible=false;group.add(halo);
-  group.userData={arms,legs,suit,halo,flight:null};
+  const hitbox=new THREE.Mesh(new THREE.SphereGeometry(.44,10,8),new THREE.MeshBasicMaterial({visible:false}));
+  hitbox.position.y=.82;group.add(hitbox);
+  group.userData={arms,legs,suit,halo,flight:null,hitbox,label:null,bubble:null,bubbleKey:null,pushFall:null};
   return group;
 }
 
-export default function TikiScene({board=[],players=[],myPlayerID,decorative=false,lastMove,interactive=false,selectedHead,onTikiClick,onWalk,onGroundClick,canWalk=false}) {
+export default function TikiScene({board=[],players=[],myPlayerID,decorative=false,lastMove,lastPush,messages=[],interactive=false,selectedHead,onTikiClick,onPlayerClick,onWalk,onGroundClick,canWalk=false}) {
   const mount = useRef(null);
-  const latest = useRef({board,players,myPlayerID,lastMove,selectedHead,onTikiClick,onWalk,onGroundClick,canWalk});
-  latest.current={board,players,myPlayerID,lastMove,selectedHead,onTikiClick,onWalk,onGroundClick,canWalk};
+  const latest = useRef({board,players,myPlayerID,lastMove,lastPush,messages,selectedHead,onTikiClick,onPlayerClick,onWalk,onGroundClick,canWalk});
+  latest.current={board,players,myPlayerID,lastMove,lastPush,messages,selectedHead,onTikiClick,onPlayerClick,onWalk,onGroundClick,canWalk};
 
   useEffect(()=>{
     const node=mount.current;
@@ -93,7 +127,7 @@ export default function TikiScene({board=[],players=[],myPlayerID,decorative=fal
         leaf.rotation.z=-Math.cos(j*1.25)*.92;leaf.rotation.x=Math.sin(j*1.25)*.92;
         palm.add(leaf);
       }
-      palm.position.set(Math.sin(angle)*7.9,0,Math.cos(angle)*7.9);
+      palm.position.set(Math.sin(angle)*9.1,0,Math.cos(angle)*9.1);
       scene.add(palm);
     }
 
@@ -115,7 +149,9 @@ export default function TikiScene({board=[],players=[],myPlayerID,decorative=fal
       rank.rotation.x=-Math.PI/2;rank.position.set(.88,.046,0);group.add(rank);
       const highlight=new THREE.Mesh(new THREE.RingGeometry(.64,.72,32),new THREE.MeshBasicMaterial({color:'#fff2b1',transparent:true,opacity:0,side:THREE.DoubleSide,depthWrite:false}));
       highlight.rotation.x=-Math.PI/2;highlight.position.y=.049;group.add(highlight);
-      group.userData={id,art,rank,highlight,start:new THREE.Vector3(),target:new THREE.Vector3(),moveStart:0,jump:false};
+      const soot=new THREE.Mesh(new THREE.PlaneGeometry(1.18,1.18),new THREE.MeshBasicMaterial({color:'#171b18',transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide}));
+      soot.rotation.x=-Math.PI/2;soot.position.y=.052;group.add(soot);
+      group.userData={id,art,rank,highlight,soot,sootUntil:0,start:new THREE.Vector3(),target:new THREE.Vector3(),moveStart:0,jump:false};
       group.position.y=FLOOR_Y;
       tileRoot.add(group);tiles.set(id,group);
     });
@@ -125,10 +161,19 @@ export default function TikiScene({board=[],players=[],myPlayerID,decorative=fal
     for(let id=0;id<4;id++){
       const avatar=stickman(Object.values(PLAYER_COLORS)[id]);
       avatar.position.set(START_POSITIONS[id].x,FLOOR_Y,START_POSITIONS[id].z);
+      avatar.userData.id=id;
       avatarRoot.add(avatar);avatars.set(id,avatar);
     }
+    const scoreBoards=START_POSITIONS.map((_,id)=>{
+      const texture=scoreTexture(`玩家 ${id+1}`,0,Object.values(PLAYER_COLORS)[id]);
+      const panel=new THREE.Mesh(new THREE.PlaneGeometry(2.4,1.2),new THREE.MeshBasicMaterial({map:texture,transparent:true,side:THREE.DoubleSide}));
+      panel.rotation.x=-Math.PI/2;
+      panel.position.set(id===0||id===3?-5.2:5.2,.015,id<2?4.8:-4.8);
+      scene.add(panel);return {panel,key:''};
+    });
     const effects=new THREE.Group();scene.add(effects);
     const bursts=[];
+    const smoke=[];
     const makeBurst=(move)=>{
       const point=move.blastAt||{x:0,z:0};
       const ring=new THREE.Mesh(new THREE.RingGeometry(.28,.42,32),new THREE.MeshBasicMaterial({color:'#ffe288',transparent:true,opacity:1,side:THREE.DoubleSide,depthWrite:false}));
@@ -142,9 +187,16 @@ export default function TikiScene({board=[],players=[],myPlayerID,decorative=fal
       }
       bursts.push({ring,shards,point,start:performance.now()});
       (move.blastPlayers||[]).forEach(({id,from,to})=>{const avatar=avatars.get(id);if(avatar)avatar.userData.flight={from,to,start:performance.now()}});
+      const live=latest.current.board.filter(tiki=>tiki.active);
+      live.slice(-2).forEach(tiki=>{const tile=tiles.get(tiki.id);if(tile)tile.userData.sootUntil=performance.now()+5000});
+      for(let i=0;i<9;i++){
+        const cloud=new THREE.Mesh(new THREE.SphereGeometry(.17+i%3*.07,10,8),new THREE.MeshBasicMaterial({color:'#282d2b',transparent:true,opacity:.4,depthWrite:false}));
+        cloud.position.set(point.x+Math.sin(i*2.4)*.43,FLOOR_Y+.18,point.z+Math.cos(i*2.4)*.43);
+        effects.add(cloud);smoke.push({mesh:cloud,start:performance.now(),offset:i});
+      }
     };
 
-    let boardSignature='',toastStamp=null;
+    let boardSignature='',toastStamp=null,pushStamp=null;
     const sync=()=>{
       const data=latest.current;
       const live=(decorative&&data.board.length===0?TIKIS.map((tiki,id)=>({...tiki,id,active:true})):data.board).filter(tiki=>tiki.active);
@@ -165,29 +217,83 @@ export default function TikiScene({board=[],players=[],myPlayerID,decorative=fal
       }
       tiles.forEach(tile=>{tile.userData.highlight.material.opacity=tile.visible&&tile.userData.id===data.selectedHead?.32:0});
       if(data.lastMove?.type==='toast'&&data.lastMove.stamp!==toastStamp){toastStamp=data.lastMove.stamp;makeBurst(data.lastMove)}
+      if(data.lastPush&&data.lastPush.stamp!==pushStamp){
+        pushStamp=data.lastPush.stamp;
+        const avatar=avatars.get(Number(data.lastPush.targetID));
+        if(avatar)avatar.userData.pushFall={...data.lastPush,start:performance.now()};
+      }
       const people=decorative&&data.players.length===0?START_POSITIONS.map((position,id)=>({joined:true,position,color:Object.keys(PLAYER_COLORS)[id]})):data.players;
       avatars.forEach((avatar,id)=>{
         const person=people[id];avatar.visible=Boolean(person?.joined);
         avatar.userData.halo.visible=!decorative&&String(id)===String(data.myPlayerID);
-        if(person?.joined)avatar.userData.suit.color.set(PLAYER_COLORS[person.color]||Object.values(PLAYER_COLORS)[id]);
+        if(person?.joined){
+          avatar.userData.suit.color.set(PLAYER_COLORS[person.color]||Object.values(PLAYER_COLORS)[id]);
+          if(!decorative){
+            const nearby=live.findIndex((tiki,index)=>distance2D(person.position||START_POSITIONS[id],tilePosition(index,live.length))<=ACTION_RADIUS);
+            const nameText=`${person.name||`玩家 ${id+1}`}${nearby>=0?`  |${nearby+1}`:''}`;
+            if(avatar.userData.labelKey!==nameText){
+              if(avatar.userData.label){avatar.remove(avatar.userData.label);avatar.userData.label.material.map.dispose();avatar.userData.label.material.dispose()}
+              const label=textSprite(nameText);label.position.y=1.63;avatar.add(label);avatar.userData.label=label;avatar.userData.labelKey=nameText;
+            }
+            const message=[...data.messages].reverse().find(item=>(String(item.playerID)===String(id)||(!item.playerID&&item.name===person.name))&&item.kind!=='system'&&Date.now()-item.at<3000);
+            const key=message?`${message.at}:${message.text||message.phrase}`:null;
+            if(avatar.userData.bubbleKey!==key){
+              if(avatar.userData.bubble){avatar.remove(avatar.userData.bubble);avatar.userData.bubble.material.map.dispose();avatar.userData.bubble.material.dispose();avatar.userData.bubble=null}
+              if(message){const bubble=textSprite(message.kind==='emote'?`${message.emoji} ${message.phrase}`:message.text,512,128,true);bubble.position.y=2.24;avatar.add(bubble);avatar.userData.bubble=bubble}
+              avatar.userData.bubbleKey=key;
+            }
+          }
+        }
+        const scoreKey=`${person?.name||`玩家 ${id+1}`}:${person?.total||0}:${person?.color||id}`;
+        if(scoreBoards[id].key!==scoreKey){
+          const panel=scoreBoards[id].panel;panel.material.map.dispose();
+          panel.material.map=scoreTexture(person?.name||`玩家 ${id+1}`,person?.total||0,PLAYER_COLORS[person?.color]||Object.values(PLAYER_COLORS)[id]);
+          panel.material.needsUpdate=true;scoreBoards[id].key=scoreKey;
+        }
+        scoreBoards[id].panel.visible=!decorative&&Boolean(person?.joined);
       });
       return people;
     };
 
-    let down=null,theta=.28,targetTheta=.28,radius=decorative?11.5:8.2;
+    let down=null,theta=.28,targetTheta=.28,radius=decorative?11.5:8.2,elevation=decorative?10.5:8.2;
+    const pointers=new Map();
+    renderer.domElement.style.touchAction='none';
     const mouseRay=(event)=>{
       const rect=renderer.domElement.getBoundingClientRect();
       const pointer=new THREE.Vector2((event.clientX-rect.left)/rect.width*2-1,-(event.clientY-rect.top)/rect.height*2+1);
       const ray=new THREE.Raycaster();ray.setFromCamera(pointer,camera);return ray;
     };
-    const pointerDown=event=>{down={x:event.clientX,y:event.clientY,theta:targetTheta};renderer.domElement.setPointerCapture?.(event.pointerId)};
-    const pointerMove=event=>{if(down)targetTheta=down.theta+(event.clientX-down.x)*.007};
+    const pointerDown=event=>{
+      pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+      down={x:event.clientX,y:event.clientY,theta:targetTheta,elevation,moved:false,pinch:false};
+      renderer.domElement.setPointerCapture?.(event.pointerId);
+    };
+    const pointerMove=event=>{
+      if(!pointers.has(event.pointerId))return;
+      const previous=pointers.get(event.pointerId);
+      pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+      if(pointers.size===2){
+        const points=[...pointers.values()],other=points.find(point=>point!==pointers.get(event.pointerId))||points[0];
+        const oldDistance=Math.hypot(previous.x-other.x,previous.y-other.y);
+        const newDistance=Math.hypot(event.clientX-other.x,event.clientY-other.y);
+        radius=THREE.MathUtils.clamp(radius-(newDistance-oldDistance)*.025,6,17);
+        if(down){down.pinch=true;down.moved=true}
+      }else if(down){
+        const factor=event.pointerType==='touch'?.011:.007;
+        targetTheta=down.theta+(event.clientX-down.x)*factor;
+        elevation=THREE.MathUtils.clamp(down.elevation+(event.clientY-down.y)*.023,4.5,13);
+        if(Math.abs(event.clientX-down.x)+Math.abs(event.clientY-down.y)>=8)down.moved=true;
+      }
+    };
     const pointerUp=event=>{
+      pointers.delete(event.pointerId);
       if(!down)return;
-      const movement=Math.abs(event.clientX-down.x)+Math.abs(event.clientY-down.y);
+      const movement=down.moved||down.pinch||Math.abs(event.clientX-down.x)+Math.abs(event.clientY-down.y)>=8;
       down=null;
-      if(movement>=8||!interactive)return;
+      if(movement||!interactive)return;
       const ray=mouseRay(event);
+      const personHit=ray.intersectObjects([...avatars.values()].filter(avatar=>avatar.visible),true)[0];
+      if(personHit){let root=personHit.object;while(root.parent&&root.parent!==avatarRoot)root=root.parent;if(root.parent===avatarRoot){latest.current.onPlayerClick?.(root.userData.id);return}}
       const tileHit=ray.intersectObjects([...tiles.values()].filter(tile=>tile.visible),true)[0];
       if(tileHit){let root=tileHit.object;while(root.parent&&root.parent!==tileRoot)root=root.parent;if(root.parent===tileRoot){latest.current.onTikiClick?.(root.userData.id);return}}
       const place=new THREE.Vector3();
@@ -220,7 +326,7 @@ export default function TikiScene({board=[],players=[],myPlayerID,decorative=fal
       const people=sync();
       if(decorative)targetTheta+=.0007;
       theta+=(targetTheta-theta)*.1;
-      camera.position.set(Math.sin(theta)*radius,decorative?10.5:8.2,Math.cos(theta)*radius);
+      camera.position.set(Math.sin(theta)*radius,elevation,Math.cos(theta)*radius);
       camera.lookAt(0,.4,0);
       const now=performance.now();
       tiles.forEach(tile=>{
@@ -229,12 +335,18 @@ export default function TikiScene({board=[],players=[],myPlayerID,decorative=fal
         const eased=1-(1-fraction)**3;
         tile.position.lerpVectors(tile.userData.start,tile.userData.target,eased);
         if(tile.userData.jump&&fraction<1)tile.position.y+=Math.sin(fraction*Math.PI)*.55;
+        tile.userData.soot.material.opacity=now<tile.userData.sootUntil?.42:0;
       });
       avatars.forEach((avatar,id)=>{
         if(!avatar.visible)return;
-        const person=people[id],destination=person?.position||START_POSITIONS[id],flight=avatar.userData.flight;
+        const person=people[id],destination=person?.position||START_POSITIONS[id],flight=avatar.userData.flight,fall=avatar.userData.pushFall;
         let moving=false;
-        if(flight){
+        if(fall){
+          const fraction=Math.min(1,(now-fall.start)/1300);
+          avatar.position.set(THREE.MathUtils.lerp(fall.from.x,fall.to.x,Math.min(1,fraction*1.6)),FLOOR_Y+(fraction<.55?.05:Math.sin((fraction-.55)/.45*Math.PI)*.17),THREE.MathUtils.lerp(fall.from.z,fall.to.z,Math.min(1,fraction*1.6)));
+          avatar.rotation.z=fraction<.52?Math.sin(fraction/.52*Math.PI/2)*1.15:(1-(fraction-.52)/.48)*1.15;
+          if(fraction>=1){avatar.userData.pushFall=null;avatar.rotation.z=0}
+        }else if(flight){
           const fraction=Math.min(1,(now-flight.start)/850);
           avatar.position.set(THREE.MathUtils.lerp(flight.from.x,flight.to.x,fraction),FLOOR_Y+Math.sin(fraction*Math.PI)*1.6,THREE.MathUtils.lerp(flight.from.z,flight.to.z,fraction));
           avatar.rotation.z=Math.sin(fraction*Math.PI)*.8;
@@ -256,6 +368,14 @@ export default function TikiScene({board=[],players=[],myPlayerID,decorative=fal
         effect.ring.scale.setScalar(1+fraction*6);effect.ring.material.opacity=1-fraction;
         effect.shards.forEach(({mesh,velocity})=>{mesh.position.set(effect.point.x+velocity.x*fraction,FLOOR_Y+.1+velocity.y*fraction-2*fraction*fraction,effect.point.z+velocity.z*fraction);mesh.rotation.set(fraction*6,fraction*7,0);mesh.material.opacity=1-fraction});
       }
+      for(let index=smoke.length-1;index>=0;index--){
+        const effect=smoke[index],age=(now-effect.start)/5000;
+        if(age>=1){effects.remove(effect.mesh);effect.mesh.geometry.dispose();effect.mesh.material.dispose();smoke.splice(index,1);continue}
+        effect.mesh.position.y=FLOOR_Y+.18+age*(.7+effect.offset%3*.18);
+        effect.mesh.position.x+=Math.sin(effect.offset*2.7)*.0006;
+        effect.mesh.material.opacity=.4*(1-age);
+        effect.mesh.scale.setScalar(1+age*1.7);
+      }
       renderer.render(scene,camera);
     };
     render();
@@ -270,4 +390,3 @@ export default function TikiScene({board=[],players=[],myPlayerID,decorative=fal
   },[decorative]);
   return <div className={`three-scene ${decorative?'decorative':''} ${interactive?'interactive':''}`} ref={mount} aria-label="可行走與旋轉視角的平面提基圖騰場景"/>;
 }
-
