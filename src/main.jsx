@@ -116,6 +116,7 @@ function App() {
 function GameRoom({G,ctx,player,room,name,isMyTurn,client,messages,chatRef,chatText,setChatText,sendChat,quickSend,currentID,rulesOpen,setRulesOpen,link,leaveRoom}) {
   const [copied,setCopied]=useState(false), [picked,setPicked]=useState(null), [showSecret,setShowSecret]=useState(false), [spectateClock,setSpectateClock]=useState(0);
   const [rps,setRps]=useState('');
+  const [toastTiki,setToastTiki]=useState(null);
   const isHost=player?.host||String(G?.hostID)===String(player?.playerID);
   const me=G?.players?.[Number(player?.playerID)];
   useEffect(()=>{ if(!G||!me||!client)return; if(['lobby','roundEnd'].includes(G.phase)) client.moves.SetProfile({name, color:me.preferredColor}); },[name,me?.preferredColor,G?.phase]);
@@ -129,7 +130,6 @@ function GameRoom({G,ctx,player,room,name,isMyTurn,client,messages,chatRef,chatT
   const sortedPlayers=G?.players?.map((p,i)=>({...p,id:String(i)})).filter(p=>p.joined)||[];
   const start=()=>client.moves.StartGame(G.targetScore);
   const copy=async()=>{await navigator.clipboard?.writeText(link);setCopied(true);setTimeout(()=>setCopied(false),1300)};
-  const [toastTiki,setToastTiki]=useState(null);
   const targetTiki=G?.board?.filter(t=>t.active).at(-1);
   return <main className="game-screen">
     <header className="gamebar"><button className="back-button" onClick={leaveRoom}>← <span>返回首頁</span></button><div className="brand game-brand"><span className="brand-mark">T</span> ISLAND<span className="brand-light">TABLE</span></div><div className="room-code"><span>配對碼</span><b>{room?.matchID}</b><button onClick={copy}>{copied?'已複製':'複製連結 ↗'}</button></div></header>
