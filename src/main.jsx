@@ -89,8 +89,8 @@ function App() {
     if(room?.matchID)localStorage.removeItem(`tiki-session:${room.matchID}`);
     player?.chat?.disconnect(); client?.stop(); setClient(null); setGameState(null); setMessages([]); setRoom(null); setPlayer(null); setScreen('home'); setModal(''); history.replaceState({}, '', location.pathname);
   }
-  function sendChat(e) { e?.preventDefault(); if (!chatText.trim()) return; player?.chat?.emit('chat:message', { room:room.matchID, name, text:chatText.trim() }); setChatText(''); }
-  function quickSend(item) { player?.chat?.emit('chat:emote', { room:room.matchID, name, emoji:item.emoji, phrase:item.phrase }); }
+  function sendChat(e) { e?.preventDefault(); if (!chatText.trim()) return; player?.chat?.emit('chat:message', { room:room.matchID, playerID:player.playerID, name, text:chatText.trim() }); setChatText(''); }
+  function quickSend(item) { player?.chat?.emit('chat:emote', { room:room.matchID, playerID:player.playerID, name, emoji:item.emoji, phrase:item.phrase }); }
   const G = gameState?.G;
   const currentID = gameState?.ctx?.currentPlayer;
   const isMyTurn = currentID === player?.playerID && G?.phase === 'playing';
@@ -110,7 +110,7 @@ function App() {
     {modal && <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setModal('')}}><section className="modal"><button className="modal-close" onClick={()=>setModal('')}>×</button>{modal === 'create' && <><div className="modal-kicker">新的島嶼冒險</div><h2>創建遊戲</h2><label>你的顯示名稱<input maxLength="20" value={name} onChange={e=>setName(e.target.value.slice(0,20))} placeholder="輸入名字（最多20字）"/></label><div className="field-note">{name.length}/20 字</div><div className="form-row"><label>房間人數<select value={seatCount} onChange={e=>setSeatCount(Number(e.target.value))}><option value="2">2 位玩家</option><option value="3">3 位玩家</option><option value="4">4 位玩家</option></select></label><label>整場目標分數<div className="score-input"><input type="number" min="1" max="60" value={targetScore} onChange={e=>setTargetScore(Math.max(1,Math.min(60,Number(e.target.value))))}/><span>分</span></div></label></div><p className="field-note">至少完成一局，最高可設為 60 分。</p>{error&&<p className="error">{error}</p>}<button className="primary-button modal-action" onClick={createRoom}>建立房間 <b>→</b></button></>}
       {modal === 'join' && <><div className="modal-kicker">朋友的島嶼正在等你</div><h2>加入遊戲</h2><label>你的顯示名稱<input maxLength="20" value={name} onChange={e=>setName(e.target.value.slice(0,20))} placeholder="輸入名字（最多20字）"/></label><label>房間配對碼<input className="code-input" value={roomInput} onChange={e=>setRoomInput(e.target.value)} placeholder="輸入房間配對碼" onKeyDown={e=>e.key==='Enter'&&joinRoom()}/></label>{error&&<p className="error">{error}</p>}<button className="primary-button modal-action" onClick={()=>joinRoom()}>搜尋並加入 <b>→</b></button></>}
       {modal === 'settings' && <><div className="modal-kicker">偏好設定</div><h2>設定</h2><label>顯示名稱<input maxLength="20" value={name} onChange={e=>setName(e.target.value.slice(0,20))} placeholder="輸入名字（最多20字）"/></label><p className="field-note">名稱只會保存在這台裝置上。</p><button className="primary-button modal-action" onClick={()=>{saveName();setModal('')}}>儲存設定 <b>✓</b></button></>}
-      {modal === 'rules' && <><div className="modal-kicker">一局一局，步步為營</div><h2>怎麼玩</h2><ul className="rules-list"><li><b>祕密圖騰</b>　每位玩家私有 3 個圖騰，結束時依排名得分。</li><li><b>出牌移動</b>　打出 Up 1／2／3，將任意圖騰向上移動；Topple 可把它推到隊尾。</li><li><b>爆破移除</b>　Toast 炸掉隊尾圖騰（每局首回合不能使用）。</li><li><b>回合計分</b>　前三名依序得 9、5、2 分；最先達到房主設定分數者勝。</li></ul><button className="primary-button modal-action" onClick={()=>setModal('')}>知道了</button></>}
+       {modal === 'rules' && <><div className="modal-kicker">一局一局，步步為營</div><h2>怎麼玩</h2><ul className="rules-list"><li><b>祕密圖騰</b>　每位玩家私有 3 個圖騰，結束時依排名得分。</li><li><b>出牌移動</b>　打出 Up 1／2／3 將圖騰向上移動；Topple 推到隊尾；互換交換任意兩張圖騰。</li><li><b>爆破移除</b>　Toast 炸掉隊尾圖騰（每局首回合不能使用）。</li><li><b>玩家互動</b>　點其他玩家，角色會走過去推倒對方。</li><li><b>回合計分</b>　前三名依序得 9、5、2 分；最先達到房主設定分數者勝。</li></ul><button className="primary-button modal-action" onClick={()=>setModal('')}>知道了</button></>}
     </section></div>}
   </>;
 }
@@ -120,14 +120,14 @@ function TikiPortrait({tiki,size=48}) {
 }
 
 function GameRoom({G,ctx,player,room,name,isMyTurn,client,messages,chatRef,chatText,setChatText,sendChat,quickSend,currentID,rulesOpen,setRulesOpen,link,leaveRoom}) {
-  const [copied,setCopied]=useState(false), [picked,setPicked]=useState(null), [showSecret,setShowSecret]=useState(false), [spectateClock,setSpectateClock]=useState(0);
+  const [copied,setCopied]=useState(false), [picked,setPicked]=useState(null), [showSecret,setShowSecret]=useState(true), [turnHint,setTurnHint]=useState(false);
   const [rps,setRps]=useState('');
   const [selectedHeads,setSelectedHeads]=useState([]);
   const [walkDestination,setWalkDestination]=useState(null);
   const isHost=player?.host||String(G?.hostID)===String(player?.playerID);
   const me=G?.players?.[Number(player?.playerID)];
   useEffect(()=>{ if(!G||!me||!client)return; if(['lobby','roundEnd'].includes(G.phase)) client.moves.SetProfile({name, color:me.preferredColor}); },[name,me?.preferredColor,G?.phase]);
-  useEffect(()=>{const t=setInterval(()=>setSpectateClock(v=>v+1),1000);return()=>clearInterval(t)},[]);
+  useEffect(()=>{if(!turnHint)return;const timer=setTimeout(()=>setTurnHint(false),2200);return()=>clearTimeout(timer)},[turnHint]);
   const active=G?.board?.filter(t=>t.active)||[];
   const selectedCard=picked===null?null:me?.hand?.[picked];
   const targetCount=selectedCard==='swap'?2:1;
@@ -145,6 +145,14 @@ function GameRoom({G,ctx,player,room,name,isMyTurn,client,messages,chatRef,chatT
   };
   useEffect(()=>{
     if(!walkDestination||!client||G?.phase!=='playing'||!me?.position)return;
+    if(walkDestination.playerID!==undefined){
+      const target=G.players[Number(walkDestination.playerID)];
+      if(!target?.joined){setWalkDestination(null);return}
+      const dx=target.position.x-me.position.x,dz=target.position.z-me.position.z;
+      if(Math.hypot(dx,dz)<=1.15){client.moves.PushPlayer(walkDestination.playerID);setWalkDestination(null);return}
+      const timer=setTimeout(()=>client.moves.MovePlayer(dx,dz),105);
+      return()=>clearTimeout(timer);
+    }
     const index=walkDestination.id===undefined?-1:active.findIndex(t=>t.id===walkDestination.id);
     const destination=index>=0?walkingSpot(index,active.length):walkDestination.id===undefined?walkDestination:null;
     if(!destination){setWalkDestination(null);return;}
@@ -152,7 +160,7 @@ function GameRoom({G,ctx,player,room,name,isMyTurn,client,messages,chatRef,chatT
     if(Math.hypot(dx,dz)<.2){setWalkDestination(null);return;}
     const timer=setTimeout(()=>client.moves.MovePlayer(dx,dz),105);
     return()=>clearTimeout(timer);
-  },[walkDestination,me?.position?.x,me?.position?.z,G?.phase,active.map(t=>t.id).join(','),client]);
+  },[walkDestination,me?.position?.x,me?.position?.z,G?.phase,G?.players?.[Number(walkDestination?.playerID)]?.position?.x,G?.players?.[Number(walkDestination?.playerID)]?.position?.z,active.map(t=>t.id).join(','),client]);
   const doMove=()=>{if(picked===null||!isMyTurn||!selectedCardValid)return;client.moves.PlayCard(picked,selectedHeads[0],selectedHeads[1]);setPicked(null);setSelectedHeads([]);setWalkDestination(null)};
   const sortedPlayers=G?.players?.map((p,i)=>({...p,id:String(i)})).filter(p=>p.joined)||[];
   const start=()=>client.moves.StartGame(G.targetScore);
@@ -162,27 +170,26 @@ function GameRoom({G,ctx,player,room,name,isMyTurn,client,messages,chatRef,chatT
     <header className="gamebar"><button className="back-button" onClick={leaveRoom}>← <span>返回首頁</span></button><div className="brand game-brand"><span className="brand-mark">T</span> ISLAND<span className="brand-light">TABLE</span></div><div className="room-code"><span>配對碼</span><b>{room?.matchID}</b><button onClick={copy}>{copied?'已複製':'複製連結 ↗'}</button></div></header>
     <div className="game-layout"><section className="table-column">
       <div className="round-strip"><span className="round-pill">第 {G?.round||1} 局</span><span className="turn-message">{G?.phase==='lobby'?'準備好顏色後，房主即可開始':G?.phase==='rps'?'顏色撞車！出拳決定誰保留顏色':G?.phase==='roundEnd'||G?.phase==='gameEnd'?'本局結束，看看誰的圖騰站上高位':isMyTurn?'輪到你出牌':'等待 '+(G?.players?.[Number(currentID)]?.name||'玩家')+' 出牌'}</span><button className="icon-button" onClick={()=>setRulesOpen(v=>!v)}>ⓘ 規則</button></div>
-      <div className="board-wrap"><div className="seat seat-top">{sortedPlayers.find(p=>Number(p.id)===(Number(player?.playerID)+2)%Math.max(2,G?.players?.length||2))?.name||'等候玩家'}</div><div className="seat seat-left">{sortedPlayers.find(p=>Number(p.id)===(Number(player?.playerID)+1)%Math.max(2,G?.players?.length||2))?.name||'等候玩家'}</div><div className="seat seat-right">{sortedPlayers.find(p=>Number(p.id)===(Number(player?.playerID)+3)%Math.max(2,G?.players?.length||2))?.name||''}</div>
-        <div className="scene-panel"><TikiScene board={G?.board||[]} players={G?.players||[]} myPlayerID={player?.playerID} canWalk={G?.phase==='playing'} lastMove={G?.lastMove} selectedHead={selectedHeads[0]} interactive onTikiClick={selectHead} onWalk={(dx,dz)=>{setWalkDestination(null);client?.moves.MovePlayer(dx,dz)}} onGroundClick={point=>setWalkDestination(point)} /><div className="scene-label">第 1～3 位計分 · {active.length} 張人頭仍在地板上</div><div className="walk-tip">WASD／方向鍵行走 · 點地板移動 · 拖曳旋轉視角</div>
-        </div>
-        <div className="seat seat-bottom">{me?.name||name} <span>你</span></div>
-      </div>
-      {G?.phase==='lobby'&&<div className="pre-game-panel"><div><b>選擇你的顏色</b><small>相同顏色會在開局前猜拳決定</small></div><div className="color-choices">{COLORS.map(c=><button key={c.id} title={c.name} className={me?.preferredColor===c.id?'selected':''} style={{'--swatch':c.hex}} onClick={()=>client.moves.SetProfile({name,color:me?.preferredColor===c.id?null:c.id})}><i/>{me?.preferredColor===c.id&&'✓'}</button>)}</div>{isHost?<button className="start-button" onClick={start} disabled={sortedPlayers.length<2}>{sortedPlayers.length<2?'等待至少 2 位玩家':'開始遊戲 →'}</button>:<span className="host-note">等待房主開始遊戲…</span>}</div>}
+       <div className="board-wrap">
+         <div className="scene-panel"><TikiScene board={G?.board||[]} players={G?.players||[]} myPlayerID={player?.playerID} canWalk={G?.phase==='playing'} lastMove={G?.lastMove} lastPush={G?.lastPush} messages={messages} selectedHead={selectedHeads[0]} interactive onTikiClick={selectHead} onPlayerClick={id=>{if(G?.phase==='playing'&&String(id)!==String(player?.playerID))setWalkDestination({playerID:String(id)})}} onWalk={(dx,dz)=>{setWalkDestination(null);client?.moves.MovePlayer(dx,dz)}} onGroundClick={point=>{if(isMyTurn)setTurnHint(true);setWalkDestination(point)}} /><div className="scene-label">第 1～3 位計分 · {active.length} 張人頭仍在地板上</div><div className="walk-tip">拖曳旋轉／上下調視角 · 雙指縮放 · 點玩家推擠</div>
+         </div>
+         {G?.phase==='playing'&&<div className={`scene-secret ${showSecret?'expanded':''}`}><button className="scene-secret-toggle" onClick={()=>setShowSecret(v=>!v)} aria-expanded={showSecret}>◉ 我的任務 {showSecret?'⌃':'⌄'}</button>{showSecret&&<div className="scene-secret-list">{me?.secret?.map((id,index)=>{const tiki=TIKIS[id];return <span className="scene-secret-item" key={id}><b>{['1','2','3'][index]}</b><TikiPortrait tiki={tiki} size={32}/><small>{tiki.name}</small></span>})}</div>}</div>}
+         {turnHint&&isMyTurn&&<div className="turn-toast" role="status">輪到你行動了！</div>}
+       </div>
+       {G?.phase==='lobby'&&<div className="pre-game-panel"><div className="lobby-title"><b>選擇你的顏色</b><small>撞色會在開局前猜拳</small></div><span className="lobby-status">{sortedPlayers.length<2?`等待至少 2 位玩家 · ${sortedPlayers.length}/2`:`已加入 ${sortedPlayers.length} 位`}</span><div className="color-choices">{COLORS.map(c=><button key={c.id} title={c.name} className={me?.preferredColor===c.id?'selected':''} style={{'--swatch':c.hex}} onClick={()=>client.moves.SetProfile({name,color:me?.preferredColor===c.id?null:c.id})}><i/>{me?.preferredColor===c.id&&'✓'}</button>)}</div>{isHost?<button className="start-button" onClick={start} disabled={sortedPlayers.length<2}>開始遊戲 →</button>:<span className="host-note">等待房主…</span>}</div>}
       {G?.phase==='rps'&&<div className="pre-game-panel rps-panel"><div><b>猜拳決定顏色</b><small>選一個手勢；房主完成後開始</small></div><div className="rps-buttons">{[['rock','✊'],['paper','✋'],['scissors','✌️']].map(([key,emoji])=><button className={rps===key?'selected':''} key={key} onClick={()=>{setRps(key);client.moves.PickRps(key)}}>{emoji}</button>)}</div>{isHost&&<button className="start-button" disabled={G.players.some(p=>p.joined&&!p.rps)} onClick={()=>client.moves.ResolveRps()}>揭曉結果 →</button>}</div>}
       {G?.phase==='playing'&&<div className="hand-zone">
-        <div className="hand-header"><span><b>你的手牌</b> <small>{me?.hand?.length||0} 張</small></span><button onClick={()=>setShowSecret(v=>!v)}>{showSecret?'隱藏祕密圖騰':'查看祕密圖騰'} ◉</button></div>
-        {showSecret&&<div className="secret-callout">你的祕密圖騰：{me?.secret?.map((id,index)=>{const tiki=TIKIS[id];return <span className="secret-tiki" key={id}><b>{['🥇','🥈','🥉'][index]}</b><TikiPortrait tiki={tiki} size={37}/><span>{tiki.name}</span></span>})}</div>}
+        <div className="hand-header"><span><b>你的手牌</b> <small>{me?.hand?.length||0} 張</small></span><small>任務圖騰顯示在場景左側</small></div>
         <div className="card-fan">{me?.hand?.map((card,index)=><button className={`action-card ${picked===index?'picked':''}`} key={`${card}-${index}`} style={{'--tilt':`${(index-(me.hand.length-1)/2)*3}deg`,'--order':index}} onClick={()=>{setPicked(index);setSelectedHeads([]);setWalkDestination(null)}} disabled={!isMyTurn||(card==='toast'&&(me?.roundPlays||0)===0)} title={card==='toast'&&(me?.roundPlays||0)===0?'爆破牌不能在你本局第一回合使用':'選取行動牌'}><span className="card-spark">✳</span><b>{card==='topple'?'推倒':card==='toast'?'爆破':card==='swap'?'互換':`上移 ${card.slice(2)}`}</b><i>{card==='topple'?'↓↓':card==='toast'?'✹':card==='swap'?'⇄':`↑${card.slice(2)}`}</i><small>{card==='topple'?'TOPPLE':card==='toast'?'TOAST':card==='swap'?'SWAP':'TIKI UP'}</small></button>)}</div>
         {isMyTurn&&selectedCard&&<div className="head-picker inline-picker" role="group" aria-label="選擇本次行動的圖騰"><div className="head-picker-header"><div><b>{selectedCard==='swap'?'依序選擇要互換的兩張人頭':'選擇地板上的人頭'}</b><small>{selectionHint} 點圖案後，火柴人會走向它。</small></div><button onClick={()=>{setPicked(null);setSelectedHeads([]);setWalkDestination(null)}} aria-label="取消選擇">×</button></div><div className="head-picker-grid">{active.map((tiki,index)=>{const portrait=TIKIS[tiki.id],selected=selectedHeads.includes(tiki.id),disabled=!targetAllowed(tiki,index);return <button key={tiki.id} className={`head-choice ${selected?'selected':''}`} disabled={disabled} onClick={()=>selectHead(tiki.id)} title={`${portrait.name}，第 ${index+1} 位`}><TikiPortrait tiki={portrait} size={52}/><span>{portrait.name}</span><small>第 {index+1} 位</small>{selected&&<i>{selectedHeads.indexOf(tiki.id)+1}</i>}</button>})}</div><div className="head-picker-footer"><span>{selectedHeads.length<targetCount?`請選 ${targetCount} 張人頭（${selectedHeads.length}/${targetCount}）`:nearTarget?'已走到目標旁，可確定行動。':`請走到第 ${firstTargetIndex+1} 位人頭旁，還有 ${distanceToTarget.toFixed(1)} 格。`}</span><button onClick={doMove} disabled={!selectedCardValid}>確定行動 →</button></div></div>}
         <div className="play-row"><span>{!isMyTurn?'等待 '+(G?.players?.[Number(currentID)]?.name||'玩家')+' 出牌':picked===null?'選一張牌，再點地板人頭或下方圖案':selectedHeads.length<targetCount?'選目標後走近圖騰':nearTarget?'已接近目標，可以確定行動':'火柴人正在走向目標；也可用 WASD 行走'}</span><button className="play-button" disabled={!isMyTurn||picked===null||!selectedCardValid} onClick={doMove}>確定行動 →</button></div>
       </div>}
       {['roundEnd','gameEnd'].includes(G?.phase)&&<div className="round-end"><div className="winner-mark">✦</div><div><b>{G.phase==='gameEnd'?(G.gameWinner===null?'人數不足，這間島嶼已散場':`${G.players[G.gameWinner]?.name} 贏得整場！`):'本局結算完成'}</b><p>{sortedPlayers.map(p=>`${p.name} +${p.roundScore}分（累計 ${p.total}）`).join('　·　')}</p></div>{G.phase==='gameEnd'?<button onClick={leaveRoom}>回到首頁</button>:me?.continue!==null?<span className="host-note">已選擇留下，等待其他玩家…</span>:<><button onClick={()=>client.moves.ContinueNext(true)}>留下來再玩 →</button><button className="text-button" onClick={()=>{client.moves.ContinueNext(false);setTimeout(leaveRoom,220)}}>離開回首頁</button></>}</div>}
     </section>
-    <aside className="side-column">{rulesOpen&&<div className="scoring-card"><div><b>計分規則</b><span>祕密圖騰結算</span></div><div className="scoring-points"><span>🥇 第一名　9 分</span><span>🥈 前二名　5 分</span><span>🥉 前三名　2 分</span></div><div className="target-score">整場目標 <b>{G?.targetScore||30} 分</b></div></div>}<div className="players-card"><div className="panel-heading"><b>島上玩家</b><span>{sortedPlayers.length}/{G?.players?.length||4} 人</span></div>{sortedPlayers.map((p,i)=>{const emote=[...messages].reverse().find(m=>m.kind==='emote'&&m.name===p.name);return <div className={`player-row ${p.id===currentID&&G?.phase==='playing'?'active-player':''}`} key={p.id}><div className="avatar-wrap"><div className="avatar" style={{'--swatch':COLORS.find(c=>c.id===p.color)?.hex||'#b2a180'}}>{p.name?.slice(0,1)||'T'}</div>{emote&&<span className="player-emoji">{emote.emoji}</span>}</div><div className="player-name">{p.name}{p.id===player?.playerID&&<small>你</small>}{String(G?.hostID)===p.id&&<em>房主</em>}</div><div className="points">{p.total}<small>分</small></div></div>})}<div className="score-goal-line"><span>達到目標結束整場</span><b>{G?.targetScore||30} 分</b></div></div>
+    <aside className="side-column">{rulesOpen&&<div className="scoring-card"><div><b>計分規則</b><span>祕密圖騰結算</span></div><div className="scoring-points"><span>🥇 第一名　9 分</span><span>🥈 前二名　5 分</span><span>🥉 前三名　2 分</span></div><div className="target-score">整場目標 <b>{G?.targetScore||30} 分</b></div></div>}
       <div className="chat-card"><div className="panel-heading"><b>島上聊天室</b><span className="live-dot">即時</span></div><div className="chat-messages" ref={chatRef}>{messages.map((m,i)=><div className={`chat-msg ${m.kind}`} key={i}>{m.kind==='emote'?<div className="emote-bubble"><b>{m.emoji}</b><span>{m.name}　{m.phrase}</span></div>:m.kind==='system'?<span className="system-msg">{m.text}</span>:<><b>{m.name}</b><span>{m.text}</span></>}</div>)}</div><div className="quick-bar">{QUICK.map(item=><button key={item.emoji} title={item.phrase} onClick={()=>quickSend(item)}>{item.emoji}</button>)}</div><form className="chat-form" onSubmit={sendChat}><input value={chatText} maxLength={240} onChange={e=>setChatText(e.target.value)} placeholder="傳個訊息給大家…"/><button>↑</button></form></div>
     </aside></div>
   </main>;
 }
 
 createRoot(document.getElementById('root')).render(<App/>);
-
