@@ -30,3 +30,18 @@
 @media(max-width:760px){.inline-picker .head-picker-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.walk-tip{left:50%;right:auto;transform:translateX(-50%);white-space:nowrap;font-size:8px}.board-wrap{height:50vh;min-height:340px}}
 @media(max-width:430px){.inline-picker{padding:9px}.inline-picker .head-choice{min-height:72px}.inline-picker .head-choice .tiki-portrait{width:43px;height:43px}.scene-label{font-size:8px}}
 
+/* The live board keeps private information near an edge, leaving the heads clear. */
+.three-scene.interactive canvas{touch-action:none}
+.scene-secret{position:absolute;z-index:4;left:12px;top:46px;width:178px;max-width:calc(100% - 24px);border:1px solid #e6d5a8a8;background:#13372dc0;color:#fff3d2;border-radius:9px;box-shadow:0 5px 18px #071b1740;backdrop-filter:blur(3px)}
+.scene-secret-toggle{display:block;width:100%;padding:6px 9px;background:transparent;color:inherit;text-align:left;font-size:10px;font-weight:700;letter-spacing:.04em}
+.scene-secret-list{display:flex;align-items:center;justify-content:space-around;gap:3px;padding:0 5px 7px}
+.scene-secret-item{display:flex;flex-direction:column;align-items:center;gap:1px;min-width:0}
+.scene-secret-item b{color:#f0d188;font-size:10px;line-height:1}.scene-secret-item small{font-size:8px;white-space:nowrap;color:#f5e9ca}
+.scene-secret-item .tiki-portrait{width:32px;height:32px}
+.turn-toast{position:absolute;z-index:5;top:12px;left:50%;transform:translateX(-50%);padding:7px 13px;border:1px solid #ffe2a8;background:#174437c0;color:#fff3c7;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;pointer-events:none;animation:turn-hint 2.2s ease-out forwards}
+@keyframes turn-hint{0%{opacity:0;transform:translate(-50%,-8px)}15%,75%{opacity:1;transform:translate(-50%,0)}100%{opacity:0}}
+.scene-label{top:10px;left:auto;right:12px;max-width:40%;text-align:right}
+.pre-game-panel{gap:10px}.pre-game-panel .lobby-title{margin-right:0;flex:0 0 auto}.lobby-status{color:#6e775f;font-size:9px;white-space:nowrap;border-left:1px solid #c9c1ac;padding-left:10px}.pre-game-panel .color-choices{margin-right:auto}
+.inline-picker{padding:8px 10px;margin:7px 0}.inline-picker .head-picker-header{padding-bottom:5px}.inline-picker .head-picker-header b{font-size:11px}.inline-picker .head-picker-header small{font-size:9px}.inline-picker .head-picker-grid{gap:4px;padding:6px 0}.inline-picker .head-choice{min-height:65px;padding:2px}.inline-picker .head-choice .tiki-portrait{width:38px;height:38px}.inline-picker .head-choice>span{font-size:8px}.inline-picker .head-choice>small{font-size:7px}.inline-picker .head-picker-footer{padding-top:5px}
+@media(max-width:760px){.scene-secret{top:39px;left:8px;width:164px}.scene-secret-item .tiki-portrait{width:28px;height:28px}.scene-label{max-width:45%;font-size:8px}.walk-tip{bottom:7px}.pre-game-panel{gap:7px}.lobby-status{padding-left:7px}.inline-picker .head-picker-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.inline-picker .head-choice{min-height:62px}.inline-picker .head-choice .tiki-portrait{width:36px;height:36px}}
+@media(max-width:430px){.scene-secret{width:150px}.scene-secret-toggle{font-size:9px;padding:5px 7px}.scene-secret-list{padding:0 3px 5px}.scene-label{font-size:7px;max-width:43%}.pre-game-panel .lobby-title{width:auto;min-width:0}.lobby-status{font-size:8px}.pre-game-panel .color-choices{width:100%;order:3}.pre-game-panel .start-button,.pre-game-panel .host-note{order:4}.inline-picker .head-choice{min-height:58px}.inline-picker .head-choice .tiki-portrait{width:32px;height:32px}.inline-picker .head-choice>span{font-size:7px}.inline-picker .head-picker-footer{gap:5px}.inline-picker .head-picker-footer>button{padding:7px 9px}}
