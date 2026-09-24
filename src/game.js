@@ -1,4 +1,4 @@
-import { ACTION_RADIUS, PUSH_RADIUS, START_POSITIONS, WALK_STEP, clampPlayerPosition, distance2D, tilePosition } from './layout.js';
+import { PUSH_RADIUS, START_POSITIONS, WALK_STEP, clampPlayerPosition, distance2D, nearestTikiIndex, tilePosition } from './layout.js';
 
 export const TIKIS = [
   { name: '瞌睡', icon: '😴', color: '#96c86c', expression: 'sleepy' },
@@ -80,15 +80,15 @@ export const TikiTopple = {
           const from = p.position || START_POSITIONS[playerIndex(playerID)];
           p.position = clampPlayerPosition({ x: from.x + dx / length * step, z: from.z + dz / length * step });
         },
-        PlayCard: ({ G, playerID, ctx, events }, cardIndex, tikiId, secondTikiId) => {
+        PlayCard: ({ G, playerID, ctx, events }, cardIndex, secondTikiId) => {
           const p = G.players[playerIndex(playerID)];
           if (!p || G.phase !== 'playing' || String(playerID) !== String(ctx.currentPlayer)) return;
           const card = p.hand[cardIndex];
           if (!card) return;
           const active = G.board.filter(t => t.active);
-          const index = active.findIndex(t => t.id === tikiId);
+          const index = nearestTikiIndex(p.position || START_POSITIONS[playerIndex(playerID)], active);
           if (index < 0) return;
-          if (distance2D(p.position || START_POSITIONS[playerIndex(playerID)], tilePosition(index, active.length)) > ACTION_RADIUS) return;
+          const tikiId = active[index].id;
           if (card === 'toast' && p.roundPlays === 0) return;
           if (card.startsWith('up')) {
             const amount = Number(card.slice(2));
