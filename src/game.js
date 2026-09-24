@@ -1,3 +1,5 @@
+import { ACTION_RADIUS, START_POSITIONS, WALK_STEP, clampPlayerPosition, distance2D, tilePosition } from './layout.js';
+
 export const TIKIS = [
   { name: '瞌睡', icon: '😴', color: '#96c86c', expression: 'sleepy' },
   { name: '翻白眼', icon: '🙄', color: '#e8a159', expression: 'roll' },
@@ -24,7 +26,7 @@ export const TikiTopple = {
   setup: ({ ctx, random }, setupData) => ({
     targetScore: Math.max(1, Math.min(60, Number(setupData?.targetScore) || 30)),
     hostID: '0', round: 1, phase: 'lobby',
-    players: Array.from({ length: ctx.numPlayers }, (_, i) => ({ name: `玩家 ${i + 1}`, joined: false, color: null, preferredColor: null, hand: [], secret: [], total: 0, roundScore: 0, roundPlays: 0, rps: null, emoji: null, continue: null })),
+    players: Array.from({ length: ctx.numPlayers }, (_, i) => ({ name: `玩家 ${i + 1}`, joined: false, color: null, preferredColor: null, hand: [], secret: [], total: 0, roundScore: 0, roundPlays: 0, rps: null, emoji: null, continue: null, position: { ...START_POSITIONS[i] } })),
     board: shuffled(TIKIS.map((tiki, id) => ({ id, ...tiki, active: true })), random),
     played: [], removed: [], lastMove: null, roundStarter: 0, roundTurn: 0, gameWinner: null,
   }),
@@ -54,6 +56,15 @@ export const TikiTopple = {
         LeaveGame: (...args) => TikiTopple.moves.LeaveGame(...args),
       } },
       play: { moves: {
+        MovePlayer: ({ G, playerID }, dx, dz) => {
+          const p = G.players[playerIndex(playerID)];
+          if (!p?.joined || G.phase !== 'playing' || !Number.isFinite(dx) || !Number.isFinite(dz)) return;
+          const length = Math.hypot(dx, dz);
+          if (length < 0.001) return;
+          const step = Math.min(WALK_STEP, length);
+          const from = p.position || START_POSITIONS[playerIndex(playerID)];
+          p.position = clampPlayerPosition({ x: from.x + dx / length * step, z: from.z + dz / length * step });
+        },
         PlayCard: ({ G, playerID, ctx, events }, cardIndex, tikiId, secondTikiId) => {
           const p = G.players[playerIndex(playerID)];
           if (!p || G.phase !== 'playing' || String(playerID) !== String(ctx.currentPlayer)) return;
@@ -62,6 +73,7 @@ export const TikiTopple = {
           const active = G.board.filter(t => t.active);
           const index = active.findIndex(t => t.id === tikiId);
           if (index < 0) return;
+          if (distance2D(p.position || START_POSITIONS[playerIndex(playerID)], tilePosition(index, active.length)) > ACTION_RADIUS) return;
           if (card === 'toast' && p.roundPlays === 0) return;
           if (card.startsWith('up')) {
             const amount = Number(card.slice(2));
@@ -69,22 +81,34 @@ export const TikiTopple = {
             const destination = index - amount;
             const [tiki] = active.splice(index, 1); active.splice(destination, 0, tiki);
             G.board = [...active, ...G.board.filter(t => !t.active)];
-            G.lastMove = { type: 'move', tikiId, from: index, to: destination, by: playerID, stamp: G.roundTurn };
+            G.lastMove = { type: 'move', tikiId, from: index, to: destination, by: playerID, stamp: `${G.round}:${G.roundTurn}` };
           } else if (card === 'topple') {
             const [moving] = active.splice(index, 1); active.push(moving);
             G.board = [...active, ...G.board.filter(t => !t.active)];
-            G.lastMove = { type: 'topple', tikiId, by: playerID, stamp: G.roundTurn };
+            G.lastMove = { type: 'topple', tikiId, by: playerID, stamp: `${G.round}:${G.roundTurn}` };
           } else if (card === 'swap') {
             const secondIndex = active.findIndex(t => t.id === secondTikiId);
             if (secondIndex < 0 || secondIndex === index) return;
             [active[index], active[secondIndex]] = [active[secondIndex], active[index]];
             G.board = [...active, ...G.board.filter(t => !t.active)];
-            G.lastMove = { type: 'swap', tikiId, secondTikiId, by: playerID, stamp: G.roundTurn };
+            G.lastMove = { type: 'swap', tikiId, secondTikiId, by: playerID, stamp: `${G.round}:${G.roundTurn}` };
           } else {
             const bottom = active.at(-1);
             if (!bottom || bottom.id !== tikiId) return;
+            const blastAt = tilePosition(index, active.length);
+            const blastPlayers = [];
+            G.players.forEach((person, personIndex) => {
+              if (!person.joined) return;
+              const from = person.position || START_POSITIONS[personIndex];
+              const distance = distance2D(from, blastAt);
+              if (distance > 2.2) return;
+              const angle = distance > 0.01 ? Math.atan2(from.z - blastAt.z, from.x - blastAt.x) : personIndex * Math.PI / 2;
+              const to = clampPlayerPosition({ x: from.x + Math.cos(angle) * 1.65, z: from.z + Math.sin(angle) * 1.65 });
+              person.position = to;
+              blastPlayers.push({ id: personIndex, from: { ...from }, to: { ...to } });
+            });
             bottom.active = false; G.removed.push(tikiId);
-            G.lastMove = { type: 'toast', tikiId, by: playerID, stamp: G.roundTurn };
+            G.lastMove = { type: 'toast', tikiId, by: playerID, stamp: `${G.round}:${G.roundTurn}`, blastAt, blastPlayers };
           }
           p.hand.splice(cardIndex, 1); p.roundPlays++; G.played.push({ playerID, card }); G.roundTurn++;
           if (G.board.filter(t => t.active).length <= 3 || G.players.every(pl => pl.hand.length === 0)) scoreRound(G, events);
@@ -164,6 +188,7 @@ function beginRound(G, ctx, random, events, first) {
     if (G.players.filter(pl => pl.joined).length >= 3) p.hand.splice(p.hand.indexOf('up1'), 1);
     p.secret = shuffled(TIKIS.map((_, n) => n), random).slice(0, 3);
     p.roundScore = 0; p.roundPlays = 0; p.emoji = null;
+    p.position = { ...START_POSITIONS[i] };
     // Same-color picks are decided by the RPS winner, then remaining conflicts get an unused color.
     if (!p.color) p.color = p.preferredColor || ['coral', 'jade', 'sun', 'lavender'][i];
   });
