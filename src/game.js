@@ -1,4 +1,4 @@
-import { ACTION_RADIUS, START_POSITIONS, WALK_STEP, clampPlayerPosition, distance2D, tilePosition } from './layout.js';
+import { ACTION_RADIUS, PUSH_RADIUS, START_POSITIONS, WALK_STEP, clampPlayerPosition, distance2D, tilePosition } from './layout.js';
 
 export const TIKIS = [
   { name: '瞌睡', icon: '😴', color: '#96c86c', expression: 'sleepy' },
@@ -11,7 +11,7 @@ export const TIKIS = [
   { name: '驚訝', icon: '😲', color: '#dc7979', expression: 'surprised' },
   { name: '平靜', icon: '😐', color: '#82c5c9', expression: 'neutral' },
 ];
-const HAND = ['up1', 'up1', 'up2', 'up2', 'up3', 'topple', 'toast'];
+const HAND = ['up1', 'up1', 'up2', 'up2', 'up3', 'topple', 'toast', 'swap'];
 const shuffled = (items, random) => {
   const a = [...items];
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(random.Number() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
@@ -28,7 +28,7 @@ export const TikiTopple = {
     hostID: '0', round: 1, phase: 'lobby',
     players: Array.from({ length: ctx.numPlayers }, (_, i) => ({ name: `玩家 ${i + 1}`, joined: false, color: null, preferredColor: null, hand: [], secret: [], total: 0, roundScore: 0, roundPlays: 0, rps: null, emoji: null, continue: null, position: { ...START_POSITIONS[i] } })),
     board: shuffled(TIKIS.map((tiki, id) => ({ id, ...tiki, active: true })), random),
-    played: [], removed: [], lastMove: null, roundStarter: 0, roundTurn: 0, gameWinner: null,
+    played: [], removed: [], lastMove: null, lastPush: null, pushCount: 0, roundStarter: 0, roundTurn: 0, gameWinner: null,
   }),
   playerView: ({ G, playerID }) => ({ ...G, players: G.players.map((p, i) => ({ ...p, hand: String(i) === String(playerID) ? p.hand : [], secret: String(i) === String(playerID) ? p.secret : [] })) }),
   turn: {
@@ -56,6 +56,21 @@ export const TikiTopple = {
         LeaveGame: (...args) => TikiTopple.moves.LeaveGame(...args),
       } },
       play: { moves: {
+        PushPlayer: ({ G, playerID }, targetID) => {
+          const attacker = G.players[playerIndex(playerID)];
+          const targetIndex = playerIndex(targetID);
+          const target = G.players[targetIndex];
+          if (G.phase !== 'playing' || !attacker?.joined || !target?.joined || String(playerID) === String(targetID)) return;
+          const from = target.position || START_POSITIONS[targetIndex];
+          const attackerAt = attacker.position || START_POSITIONS[playerIndex(playerID)];
+          const separation = distance2D(attackerAt, from);
+          if (separation > PUSH_RADIUS) return;
+          const angle = separation > .01 ? Math.atan2(from.z - attackerAt.z, from.x - attackerAt.x) : targetIndex * Math.PI / 2;
+          const to = clampPlayerPosition({ x: from.x + Math.cos(angle) * .94, z: from.z + Math.sin(angle) * .94 });
+          target.position = to;
+          G.pushCount++;
+          G.lastPush = { by: playerID, targetID: String(targetID), from: { ...from }, to: { ...to }, stamp: `${G.round}:${G.pushCount}` };
+        },
         MovePlayer: ({ G, playerID }, dx, dz) => {
           const p = G.players[playerIndex(playerID)];
           if (!p?.joined || G.phase !== 'playing' || !Number.isFinite(dx) || !Number.isFinite(dz)) return;
@@ -193,7 +208,7 @@ function beginRound(G, ctx, random, events, first) {
     if (!p.color) p.color = p.preferredColor || ['coral', 'jade', 'sun', 'lavender'][i];
   });
   G.board = shuffled(TIKIS.map((tiki, id) => ({ id, ...tiki, active: true })), random);
-  G.removed = []; G.played = []; G.roundTurn = 0; G.lastMove = null;
+  G.removed = []; G.played = []; G.roundTurn = 0; G.lastMove = null; G.lastPush = null; G.pushCount = 0;
   G.phase = 'playing'; if (first) G.roundStarter = 0;
   events.setActivePlayers({ all: 'play' }); events.endTurn({ next: String(G.roundStarter) });
 }
@@ -209,4 +224,3 @@ function scoreRound(G, events) {
   G.phase = winner ? 'gameEnd' : 'roundEnd';
   events.setActivePlayers({ all: 'lobby' });
 }
-
