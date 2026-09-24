@@ -39,17 +39,16 @@ io.on('connection', socket => {
     socket.join(`room:${room}`);
     socket.to(`room:${room}`).emit('chat:system', { text: `${name || '玩家'} 加入聊天室`, at: Date.now() });
   });
-  socket.on('chat:message', ({ room, name, text }) => {
+  socket.on('chat:message', ({ room, playerID, name, text }) => {
     if (!room || !text?.trim()) return;
-    io.to(`room:${room}`).emit('chat:message', { name: String(name || '玩家').slice(0, 20), text: String(text).slice(0, 240), at: Date.now() });
+    io.to(`room:${room}`).emit('chat:message', { playerID:String(playerID ?? ''), name: String(name || '玩家').slice(0, 20), text: String(text).slice(0, 240), at: Date.now() });
   });
-  socket.on('chat:emote', ({ room, name, emoji, phrase }) => {
+  socket.on('chat:emote', ({ room, playerID, name, emoji, phrase }) => {
     if (!room) return;
-    io.to(`room:${room}`).emit('chat:emote', { name: String(name || '玩家').slice(0, 20), emoji, phrase, at: Date.now() });
+    io.to(`room:${room}`).emit('chat:emote', { playerID:String(playerID ?? ''), name: String(name || '玩家').slice(0, 20), emoji, phrase, at: Date.now() });
   });
 });
 if (!production) {
   const chatServer = io.httpServer;
   chatServer.listen(8001, () => console.log('Chat server listening on :8001'));
 }
-
