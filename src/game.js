@@ -79,8 +79,8 @@ export const TikiTopple = {
         LeaveGame: (...args) => TikiTopple.moves.LeaveGame(...args),
       } },
     },
-    onBegin: ({ G, ctx }) => {
-      if (G.phase === 'playing' && G.roundTurn === 0) ctx.events.setActivePlayers({ all: 'play' });
+    onBegin: ({ G, events }) => {
+      if (G.phase === 'playing' && G.roundTurn === 0) events.setActivePlayers({ all: 'play' });
     },
   },
   moves: {
