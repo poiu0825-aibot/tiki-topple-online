@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Client } from 'boardgame.io/client';
 import { SocketIO } from 'boardgame.io/multiplayer';
 import { io } from 'socket.io-client';
-import * as THREE from 'three';
 import { TikiTopple, TIKIS } from './game.js';
+import { ACTION_RADIUS, distance2D, tilePosition, walkingSpot } from './layout.js';
+import { tikiImageUrl } from './tikiArt.js';
+import TikiScene from './TikiScene.jsx';
 import './style.css';
 
 const SERVER_HOST = `${location.protocol}//${location.hostname}`;
@@ -114,31 +116,14 @@ function App() {
 }
 
 function TikiPortrait({tiki,size=48}) {
-  const expression=tiki?.expression||'neutral';
-  const skin=tiki?.color||'#96c86c';
-  const closed=expression==='sleepy'||expression==='wink'||expression==='smirk';
-  const eyes=[[34,45],[66,45]];
-  const brow=expression==='angry'?'M22 31 Q34 22 45 34 M55 34 Q67 22 78 31':expression==='smirk'?'M22 31 Q34 25 45 31 M55 31 Q67 35 78 29':'M22 31 Q34 27 45 31 M55 31 Q67 27 78 31';
-  return <svg className="tiki-portrait" width={size} height={size} viewBox="0 0 100 100" role="img" aria-label={`${tiki?.name||'提基'}圖騰`}>
-    <path d="M24 78 Q17 83 21 94 L79 94 Q83 83 76 78Z" fill="#46414a"/>
-    <path d="M17 39 Q10 35 9 48 Q9 59 20 60 M83 39 Q90 35 91 48 Q91 59 80 60" fill={skin} stroke="#45513c" strokeWidth="2"/>
-    <path d="M19 26 Q22 10 50 9 Q78 10 81 26 L84 61 Q82 81 67 84 L33 84 Q18 81 16 61Z" fill={skin} stroke="#45513c" strokeWidth="2.5"/>
-    <path d="M21 40 Q32 34 44 41 M56 41 Q68 34 79 40" fill="none" stroke="#45404a" strokeWidth="5" strokeLinecap="round"/>
-    {eyes.map(([x,y],i)=>closed&&(expression==='sleepy'||(expression==='wink'&&i===0)||(expression==='smirk'&&i===0))
-      ? <path key={i} d={`M${x-9} ${y} Q${x} ${y+6} ${x+9} ${y}`} fill="none" stroke="#45404a" strokeWidth="4" strokeLinecap="round"/>
-      : <g key={i}><ellipse cx={x} cy={y} rx={expression==='angry'?8:10} ry={expression==='angry'?6:8} fill="#fff8ea"/><circle cx={x+(expression==='roll'?(i===0?2:-2):0)} cy={y+(expression==='roll'?-4:0)} r="4.3" fill="#332c32"/><circle cx={x-1.5} cy={y-2.3+(expression==='roll'?-4:0)} r="1.3" fill="white"/></g>)}
-    <path d={brow} fill="none" stroke="#45404a" strokeWidth="5" strokeLinecap="round"/>
-    <ellipse cx="50" cy="57" rx="13" ry="11" fill={skin}/><ellipse cx="50" cy="60" rx="7" ry="4" fill="#81ad5b" opacity=".55"/>
-    {expression==='surprised'?<ellipse cx="50" cy="72" rx="6" ry="8" fill="#45404a"/>:expression==='smile'?<g><path d="M36 69 Q50 85 64 69" fill="#45404a"/><path d="M40 71 Q50 78 60 71" fill="#fff1cf"/></g>:expression==='smirk'?<path d="M38 73 Q52 75 63 66" fill="none" stroke="#45404a" strokeWidth="4" strokeLinecap="round"/>:expression==='angry'?<path d="M39 75 Q50 67 61 75" fill="none" stroke="#45404a" strokeWidth="4" strokeLinecap="round"/>:<path d="M39 71 Q50 76 61 71" fill="none" stroke="#45404a" strokeWidth="4" strokeLinecap="round"/>}
-    {expression==='sweat'&&<path d="M75 42 Q84 53 76 59 Q68 57 75 42Z" fill="#77dff2" stroke="#fff" strokeWidth="1.5"/>}
-    <path d="M19 83 Q50 90 81 83 L78 94 Q50 98 22 94Z" fill="#625d65" stroke="#39373c" strokeWidth="2"/>
-  </svg>;
+  return <img className="tiki-portrait" width={size} height={size} src={tikiImageUrl(tiki)} alt={`${tiki?.name||'提基'}圖騰`}/>;
 }
 
 function GameRoom({G,ctx,player,room,name,isMyTurn,client,messages,chatRef,chatText,setChatText,sendChat,quickSend,currentID,rulesOpen,setRulesOpen,link,leaveRoom}) {
   const [copied,setCopied]=useState(false), [picked,setPicked]=useState(null), [showSecret,setShowSecret]=useState(false), [spectateClock,setSpectateClock]=useState(0);
   const [rps,setRps]=useState('');
   const [selectedHeads,setSelectedHeads]=useState([]);
+  const [walkDestination,setWalkDestination]=useState(null);
   const isHost=player?.host||String(G?.hostID)===String(player?.playerID);
   const me=G?.players?.[Number(player?.playerID)];
   useEffect(()=>{ if(!G||!me||!client)return; if(['lobby','roundEnd'].includes(G.phase)) client.moves.SetProfile({name, color:me.preferredColor}); },[name,me?.preferredColor,G?.phase]);
@@ -148,13 +133,27 @@ function GameRoom({G,ctx,player,room,name,isMyTurn,client,messages,chatRef,chatT
   const targetCount=selectedCard==='swap'?2:1;
   const firstTargetIndex=active.findIndex(t=>t.id===selectedHeads[0]);
   const targetAllowed=(tiki,index)=>!(selectedCard?.startsWith('up')&&index<Number(selectedCard.slice(2)))&&!(selectedCard==='toast'&&((me?.roundPlays||0)===0||index!==active.length-1));
-  const selectedCardValid=Boolean(selectedCard)&&selectedHeads.length===targetCount&&selectedHeads.every(id=>active.some(t=>t.id===id))&&targetAllowed(active[firstTargetIndex],firstTargetIndex);
-  const selectionHint=selectedCard?.startsWith('up')?`上移 ${selectedCard.slice(2)} 格：請選塔上第 ${Number(selectedCard.slice(2))+1} 位或更下方的圖騰。`:selectedCard==='toast'?'爆破牌只能選塔底圖騰。':selectedCard==='swap'?'互換需要依序選兩個不同圖騰。':'';
+  const targetPlace=firstTargetIndex<0?null:tilePosition(firstTargetIndex,active.length);
+  const distanceToTarget=targetPlace&&me?.position?distance2D(me.position,targetPlace):Infinity;
+  const nearTarget=distanceToTarget<=ACTION_RADIUS;
+  const selectedCardValid=Boolean(selectedCard)&&selectedHeads.length===targetCount&&selectedHeads.every(id=>active.some(t=>t.id===id))&&targetAllowed(active[firstTargetIndex],firstTargetIndex)&&nearTarget;
+  const selectionHint=selectedCard?.startsWith('up')?`上移 ${selectedCard.slice(2)} 格：請選第 ${Number(selectedCard.slice(2))+1} 位或更後方的圖騰。`:selectedCard==='toast'?'爆破牌只能選最後一位圖騰。':selectedCard==='swap'?'互換需要依序選兩個不同圖騰。':'選一個要操作的人頭。';
   const selectHead=(id)=>{
-    const index=active.findIndex(t=>t.id===id),tiki=active[index];if(!tiki||!targetAllowed(tiki,index))return;
+    const index=active.findIndex(t=>t.id===id),tiki=active[index];if(!isMyTurn||!selectedCard||!tiki||!targetAllowed(tiki,index))return;
     setSelectedHeads(previous=>previous.includes(id)?previous.filter(item=>item!==id):targetCount===1?[id]:previous.length<2?[...previous,id]:[previous[1],id]);
+    setWalkDestination({id:targetCount===2&&selectedHeads[0]!==undefined?selectedHeads[0]:id});
   };
-  const doMove=()=>{if(picked===null||!isMyTurn||!selectedCardValid)return;client.moves.PlayCard(picked,selectedHeads[0],selectedHeads[1]);setPicked(null);setSelectedHeads([])};
+  useEffect(()=>{
+    if(!walkDestination||!client||G?.phase!=='playing'||!me?.position)return;
+    const index=walkDestination.id===undefined?-1:active.findIndex(t=>t.id===walkDestination.id);
+    const destination=index>=0?walkingSpot(index,active.length):walkDestination.id===undefined?walkDestination:null;
+    if(!destination){setWalkDestination(null);return;}
+    const dx=destination.x-me.position.x,dz=destination.z-me.position.z;
+    if(Math.hypot(dx,dz)<.2){setWalkDestination(null);return;}
+    const timer=setTimeout(()=>client.moves.MovePlayer(dx,dz),105);
+    return()=>clearTimeout(timer);
+  },[walkDestination,me?.position?.x,me?.position?.z,G?.phase,active.map(t=>t.id).join(','),client]);
+  const doMove=()=>{if(picked===null||!isMyTurn||!selectedCardValid)return;client.moves.PlayCard(picked,selectedHeads[0],selectedHeads[1]);setPicked(null);setSelectedHeads([]);setWalkDestination(null)};
   const sortedPlayers=G?.players?.map((p,i)=>({...p,id:String(i)})).filter(p=>p.joined)||[];
   const start=()=>client.moves.StartGame(G.targetScore);
   const copy=async()=>{await navigator.clipboard?.writeText(link);setCopied(true);setTimeout(()=>setCopied(false),1300)};
@@ -164,8 +163,7 @@ function GameRoom({G,ctx,player,room,name,isMyTurn,client,messages,chatRef,chatT
     <div className="game-layout"><section className="table-column">
       <div className="round-strip"><span className="round-pill">第 {G?.round||1} 局</span><span className="turn-message">{G?.phase==='lobby'?'準備好顏色後，房主即可開始':G?.phase==='rps'?'顏色撞車！出拳決定誰保留顏色':G?.phase==='roundEnd'||G?.phase==='gameEnd'?'本局結束，看看誰的圖騰站上高位':isMyTurn?'輪到你出牌':'等待 '+(G?.players?.[Number(currentID)]?.name||'玩家')+' 出牌'}</span><button className="icon-button" onClick={()=>setRulesOpen(v=>!v)}>ⓘ 規則</button></div>
       <div className="board-wrap"><div className="seat seat-top">{sortedPlayers.find(p=>Number(p.id)===(Number(player?.playerID)+2)%Math.max(2,G?.players?.length||2))?.name||'等候玩家'}</div><div className="seat seat-left">{sortedPlayers.find(p=>Number(p.id)===(Number(player?.playerID)+1)%Math.max(2,G?.players?.length||2))?.name||'等候玩家'}</div><div className="seat seat-right">{sortedPlayers.find(p=>Number(p.id)===(Number(player?.playerID)+3)%Math.max(2,G?.players?.length||2))?.name||''}</div>
-        <div className="scene-panel"><TikiScene board={G?.board||[]} lastMove={G?.lastMove} interactive onTikiClick={selectHead} secret={showSecret?me?.secret:[]} /><div className="scene-label">塔頂三座計分 · {active.length} 座圖騰仍在塔上</div><button className="rotate-tip" onClick={e=>e.currentTarget.classList.toggle('tip-hide')}>⟳　拖曳旋轉視角</button>
-        {G?.phase==='playing'&&isMyTurn&&selectedCard&&<div className="head-picker" role="dialog" aria-label="選擇本次行動的圖騰"><div className="head-picker-header"><div><b>{selectedCard==='swap'?'選擇要互換的兩個圖騰':'選擇行動目標'}</b><small>{selectedCard==='swap'?`已選 ${selectedHeads.length}/2 個`:selectionHint}</small></div><button onClick={()=>{setPicked(null);setSelectedHeads([])}} aria-label="關閉選擇視窗">×</button></div><div className="head-picker-grid">{active.map((tiki,index)=>{const portrait=TIKIS[tiki.id],selected=selectedHeads.includes(tiki.id),disabled=!targetAllowed(tiki,index);return <button key={tiki.id} className={`head-choice ${selected?'selected':''}`} style={{'--tiki-color':portrait.color}} disabled={disabled} onClick={()=>selectHead(tiki.id)} title={`${tiki.name}，${index===0?'塔頂':index===active.length-1?'塔底':`第 ${index+1} 位`}`}><TikiPortrait tiki={portrait} size={52}/><span>{portrait.name}</span><small>{index===0?'塔頂':index===active.length-1?'塔底':`第 ${index+1} 位`}</small>{selected&&<i>{selectedHeads.indexOf(tiki.id)+1}</i>}</button>})}</div><div className="head-picker-footer"><span>{selectedCardValid?'目標已選好，可以執行。':`選擇 ${targetCount} 個圖騰（${selectedHeads.length}/${targetCount}）`}</span><button onClick={doMove} disabled={!selectedCardValid}>執行行動 →</button></div></div>}
+        <div className="scene-panel"><TikiScene board={G?.board||[]} players={G?.players||[]} myPlayerID={player?.playerID} canWalk={G?.phase==='playing'} lastMove={G?.lastMove} selectedHead={selectedHeads[0]} interactive onTikiClick={selectHead} onWalk={(dx,dz)=>{setWalkDestination(null);client?.moves.MovePlayer(dx,dz)}} onGroundClick={point=>setWalkDestination(point)} /><div className="scene-label">第 1～3 位計分 · {active.length} 張人頭仍在地板上</div><div className="walk-tip">WASD／方向鍵行走 · 點地板移動 · 拖曳旋轉視角</div>
         </div>
         <div className="seat seat-bottom">{me?.name||name} <span>你</span></div>
       </div>
@@ -174,8 +172,9 @@ function GameRoom({G,ctx,player,room,name,isMyTurn,client,messages,chatRef,chatT
       {G?.phase==='playing'&&<div className="hand-zone">
         <div className="hand-header"><span><b>你的手牌</b> <small>{me?.hand?.length||0} 張</small></span><button onClick={()=>setShowSecret(v=>!v)}>{showSecret?'隱藏祕密圖騰':'查看祕密圖騰'} ◉</button></div>
         {showSecret&&<div className="secret-callout">你的祕密圖騰：{me?.secret?.map((id,index)=>{const tiki=TIKIS[id];return <span className="secret-tiki" key={id}><b>{['🥇','🥈','🥉'][index]}</b><TikiPortrait tiki={tiki} size={37}/><span>{tiki.name}</span></span>})}</div>}
-        <div className="card-fan">{me?.hand?.map((card,index)=><button className={`action-card ${picked===index?'picked':''}`} key={`${card}-${index}`} style={{'--tilt':`${(index-(me.hand.length-1)/2)*3}deg`,'--order':index}} onClick={()=>{setPicked(index);setSelectedHeads([])}} disabled={!isMyTurn||(card==='toast'&&(me?.roundPlays||0)===0)} title={card==='toast'&&(me?.roundPlays||0)===0?'爆破牌不能在你本局第一回合使用':'選取行動牌'}><span className="card-spark">✳</span><b>{card==='topple'?'推倒':card==='toast'?'爆破':card==='swap'?'互換':`上移 ${card.slice(2)}`}</b><i>{card==='topple'?'↓↓':card==='toast'?'✹':card==='swap'?'⇄':`↑${card.slice(2)}`}</i><small>{card==='topple'?'TOPPLE':card==='toast'?'TOAST':card==='swap'?'SWAP':'TIKI UP'}</small></button>)}</div>
-        <div className="play-row"><span>{!isMyTurn?'等待 '+(G?.players?.[Number(currentID)]?.name||'玩家')+' 出牌':picked===null?'選一張牌，再從獨立圖騰視窗選擇目標':selectedHeads.length<targetCount?`從視窗選擇目標（${selectedHeads.length}/${targetCount}）`:selectedHeads.map(id=>TIKIS[id]?.name).join(' ⇄ ')}</span><button className="play-button" disabled={!isMyTurn||picked===null||!selectedCardValid} onClick={doMove}>出牌並執行 →</button></div>
+        <div className="card-fan">{me?.hand?.map((card,index)=><button className={`action-card ${picked===index?'picked':''}`} key={`${card}-${index}`} style={{'--tilt':`${(index-(me.hand.length-1)/2)*3}deg`,'--order':index}} onClick={()=>{setPicked(index);setSelectedHeads([]);setWalkDestination(null)}} disabled={!isMyTurn||(card==='toast'&&(me?.roundPlays||0)===0)} title={card==='toast'&&(me?.roundPlays||0)===0?'爆破牌不能在你本局第一回合使用':'選取行動牌'}><span className="card-spark">✳</span><b>{card==='topple'?'推倒':card==='toast'?'爆破':card==='swap'?'互換':`上移 ${card.slice(2)}`}</b><i>{card==='topple'?'↓↓':card==='toast'?'✹':card==='swap'?'⇄':`↑${card.slice(2)}`}</i><small>{card==='topple'?'TOPPLE':card==='toast'?'TOAST':card==='swap'?'SWAP':'TIKI UP'}</small></button>)}</div>
+        {isMyTurn&&selectedCard&&<div className="head-picker inline-picker" role="group" aria-label="選擇本次行動的圖騰"><div className="head-picker-header"><div><b>{selectedCard==='swap'?'依序選擇要互換的兩張人頭':'選擇地板上的人頭'}</b><small>{selectionHint} 點圖案後，火柴人會走向它。</small></div><button onClick={()=>{setPicked(null);setSelectedHeads([]);setWalkDestination(null)}} aria-label="取消選擇">×</button></div><div className="head-picker-grid">{active.map((tiki,index)=>{const portrait=TIKIS[tiki.id],selected=selectedHeads.includes(tiki.id),disabled=!targetAllowed(tiki,index);return <button key={tiki.id} className={`head-choice ${selected?'selected':''}`} disabled={disabled} onClick={()=>selectHead(tiki.id)} title={`${portrait.name}，第 ${index+1} 位`}><TikiPortrait tiki={portrait} size={52}/><span>{portrait.name}</span><small>第 {index+1} 位</small>{selected&&<i>{selectedHeads.indexOf(tiki.id)+1}</i>}</button>})}</div><div className="head-picker-footer"><span>{selectedHeads.length<targetCount?`請選 ${targetCount} 張人頭（${selectedHeads.length}/${targetCount}）`:nearTarget?'已走到目標旁，可確定行動。':`請走到第 ${firstTargetIndex+1} 位人頭旁，還有 ${distanceToTarget.toFixed(1)} 格。`}</span><button onClick={doMove} disabled={!selectedCardValid}>確定行動 →</button></div></div>}
+        <div className="play-row"><span>{!isMyTurn?'等待 '+(G?.players?.[Number(currentID)]?.name||'玩家')+' 出牌':picked===null?'選一張牌，再點地板人頭或下方圖案':selectedHeads.length<targetCount?'選目標後走近圖騰':nearTarget?'已接近目標，可以確定行動':'火柴人正在走向目標；也可用 WASD 行走'}</span><button className="play-button" disabled={!isMyTurn||picked===null||!selectedCardValid} onClick={doMove}>確定行動 →</button></div>
       </div>}
       {['roundEnd','gameEnd'].includes(G?.phase)&&<div className="round-end"><div className="winner-mark">✦</div><div><b>{G.phase==='gameEnd'?(G.gameWinner===null?'人數不足，這間島嶼已散場':`${G.players[G.gameWinner]?.name} 贏得整場！`):'本局結算完成'}</b><p>{sortedPlayers.map(p=>`${p.name} +${p.roundScore}分（累計 ${p.total}）`).join('　·　')}</p></div>{G.phase==='gameEnd'?<button onClick={leaveRoom}>回到首頁</button>:me?.continue!==null?<span className="host-note">已選擇留下，等待其他玩家…</span>:<><button onClick={()=>client.moves.ContinueNext(true)}>留下來再玩 →</button><button className="text-button" onClick={()=>{client.moves.ContinueNext(false);setTimeout(leaveRoom,220)}}>離開回首頁</button></>}</div>}
     </section>
@@ -183,115 +182,6 @@ function GameRoom({G,ctx,player,room,name,isMyTurn,client,messages,chatRef,chatT
       <div className="chat-card"><div className="panel-heading"><b>島上聊天室</b><span className="live-dot">即時</span></div><div className="chat-messages" ref={chatRef}>{messages.map((m,i)=><div className={`chat-msg ${m.kind}`} key={i}>{m.kind==='emote'?<div className="emote-bubble"><b>{m.emoji}</b><span>{m.name}　{m.phrase}</span></div>:m.kind==='system'?<span className="system-msg">{m.text}</span>:<><b>{m.name}</b><span>{m.text}</span></>}</div>)}</div><div className="quick-bar">{QUICK.map(item=><button key={item.emoji} title={item.phrase} onClick={()=>quickSend(item)}>{item.emoji}</button>)}</div><form className="chat-form" onSubmit={sendChat}><input value={chatText} maxLength={240} onChange={e=>setChatText(e.target.value)} placeholder="傳個訊息給大家…"/><button>↑</button></form></div>
     </aside></div>
   </main>;
-}
-
-function TikiScene({board=[],decorative=false,lastMove,interactive=false,secret=[],onTikiClick}) {
-  const mount=useRef(null), activeRef=useRef([]), cameraRef=useRef(null), theta=useRef(.42), targetTheta=useRef(.42), animRef=useRef(0);
-  const dataRef=useRef({board,lastMove,secret});dataRef.current={board,lastMove,secret};
-  const sceneID=useMemo(()=>Math.random(),[]);
-  useEffect(()=>{
-    const node=mount.current; if(!node)return;
-    const scene=new THREE.Scene(); scene.background=new THREE.Color(decorative?'#183e39':'#193f39'); scene.fog=new THREE.FogExp2('#193f39',.035);
-    const camera=new THREE.PerspectiveCamera(38,node.clientWidth/node.clientHeight,.1,100); camera.position.set(0,12,23); camera.lookAt(0,6,0); cameraRef.current=camera;
-    const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false}); renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(node.clientWidth,node.clientHeight); renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap; renderer.outputColorSpace=THREE.SRGBColorSpace; renderer.toneMapping=THREE.ACESFilmicToneMapping; node.appendChild(renderer.domElement);
-    scene.add(new THREE.HemisphereLight('#ddf5dc','#3a2d22',2.2)); const sun=new THREE.DirectionalLight('#fff0c9',3.3); sun.position.set(-6,10,7); sun.castShadow=true; scene.add(sun); const fill=new THREE.PointLight('#76d3a6',18,30); fill.position.set(5,5,-4); scene.add(fill);
-    const floor=new THREE.Mesh(new THREE.CircleGeometry(17,80),new THREE.MeshStandardMaterial({color:'#28614d',roughness:.93})); floor.rotation.x=-Math.PI/2; floor.position.y=-.2; floor.receiveShadow=true; scene.add(floor);
-    const sand=new THREE.Mesh(new THREE.CircleGeometry(10,64),new THREE.MeshStandardMaterial({color:'#b99461',roughness:1})); sand.rotation.x=-Math.PI/2; sand.position.y=-.12; sand.receiveShadow=true; scene.add(sand);
-    const table=new THREE.Mesh(new THREE.CylinderGeometry(5.2,5.5,.42,64),new THREE.MeshStandardMaterial({color:'#694630',roughness:.62})); table.position.y=.06; table.castShadow=true; table.receiveShadow=true; scene.add(table);
-    const rim=new THREE.Mesh(new THREE.TorusGeometry(5.17,.11,8,80),new THREE.MeshStandardMaterial({color:'#d6b372',metalness:.28,roughness:.38}));rim.rotation.x=Math.PI/2;rim.position.y=.29;scene.add(rim);
-    const mat=(color,roughness=.65,extra={})=>new THREE.MeshStandardMaterial({color,roughness,...extra});
-    const darkMat=mat('#403f48'), whiteMat=mat('#fff6e7',.35), pupilMat=mat('#332c32',.26), toothMat=mat('#fff1cf',.35), sweatMat=mat('#75ddf4',.24,{metalness:.08});
-    const makeTiki=(color='#96c86c',scale=1,expression='neutral')=>{
-      const group=new THREE.Group();group.scale.setScalar(scale);
-      const addSphere=(material,position,size)=>{const mesh=new THREE.Mesh(new THREE.SphereGeometry(1,28,20),material);mesh.position.set(...position);mesh.scale.set(...size);mesh.castShadow=true;group.add(mesh);return mesh};
-      const skin=mat(color,.48), skinLight=mat(new THREE.Color(color).lerp(new THREE.Color('#ffffff'),.16),.43), browMat=mat(new THREE.Color(color).multiplyScalar(.40),.78);
-      const base=new THREE.Mesh(new THREE.CylinderGeometry(.48,.60,.26,24),mat('#45404a',.72));base.position.y=.23;base.castShadow=true;group.add(base);
-      const collar=new THREE.Mesh(new THREE.TorusGeometry(.66,.075,8,32),mat('#d5d3ca',.38,{metalness:.18}));collar.rotation.x=Math.PI/2;collar.position.y=.40;group.add(collar);
-      addSphere(skinLight,[0,1.16,0],[.92,1.06,.72]);
-      addSphere(skin,[-.81,1.12,0],[.25,.36,.26]);addSphere(skin,[.81,1.12,0],[.25,.36,.26]);
-      addSphere(skinLight,[-.48,.73,.42],[.35,.32,.29]);addSphere(skinLight,[.48,.73,.42],[.35,.32,.29]);
-      const closed=expression==='sleepy';
-      const eyePositions=[[-.31,1.22,.575],[.31,1.22,.575]];
-      const browSlopes=expression==='angry'?[.33,-.33]:expression==='smirk'?[-.16,.2]:expression==='sweat'?[.2,-.24]:[0,0];
-      eyePositions.forEach(([x,y,z],index)=>{
-        if(closed||(expression==='wink'&&index===0)||(expression==='smirk'&&index===0)){
-          const curve=new THREE.CatmullRomCurve3([new THREE.Vector3(x-.20,y,z),new THREE.Vector3(x,y-.085,z+.025),new THREE.Vector3(x+.20,y,z)]);
-          const lid=new THREE.Mesh(new THREE.TubeGeometry(curve,12,.055,7,false),browMat);group.add(lid);
-        }else{
-          const eye=addSphere(whiteMat,[x,y,.575],[.245,expression==='angry'?.16:.205,.115]);
-          const pupilY=expression==='roll'?y+.105:expression==='surprised'?y+.015:y-.015;
-          const pupilX=x+(expression==='roll'?(index===0?.035:-.035):0);
-          addSphere(pupilMat,[pupilX,pupilY,.685],[.092,.108,.052]);
-          addSphere(whiteMat,[pupilX-.025,pupilY+.035,.729],[.026,.028,.016]);
-          if(expression==='sleepy')eye.scale.y=.11;
-        }
-        const brow=new THREE.Mesh(new THREE.CapsuleGeometry(.057,.35,3,8),browMat);brow.rotation.z=Math.PI/2+browSlopes[index];brow.position.set(x,1.57,.58);brow.castShadow=true;group.add(brow);
-      });
-      addSphere(skin,[0,.98,.64],[.21,.19,.20]);
-      const curveLine=(points,radius=.045)=>{const curve=new THREE.CatmullRomCurve3(points.map(([x,y,z])=>new THREE.Vector3(x,y,z)));const line=new THREE.Mesh(new THREE.TubeGeometry(curve,20,radius,8,false),browMat);group.add(line)};
-      if(expression==='surprised')addSphere(darkMat,[0,.58,.59],[.16,.22,.075]);
-      else if(expression==='smile'){
-        addSphere(darkMat,[0,.61,.59],[.28,.17,.065]);addSphere(toothMat,[0,.70,.648],[.20,.055,.025]);
-        curveLine([[-.30,.70,.59],[-.18,.53,.63],[0,.50,.65],[.18,.53,.63],[.30,.70,.59]],.035);
-      }else if(expression==='smirk')curveLine([[-.29,.66,.59],[-.10,.58,.64],[.12,.60,.65],[.30,.77,.58]],.052);
-      else if(expression==='angry')curveLine([[-.27,.73,.59],[-.12,.61,.64],[.12,.61,.64],[.27,.73,.59]],.05);
-      else if(expression==='sleepy'||expression==='neutral')curveLine([[-.24,.64,.60],[0,.61,.65],[.24,.64,.60]],.04);
-      else curveLine([[-.26,.70,.59],[-.12,.61,.64],[.10,.61,.64],[.26,.70,.59]],.045);
-      if(expression==='sweat'){
-        const drop=new THREE.Mesh(new THREE.SphereGeometry(.12,16,12),sweatMat);drop.scale.set(.7,1.35,.45);drop.position.set(.70,1.65,.43);group.add(drop);
-        const tip=new THREE.Mesh(new THREE.ConeGeometry(.075,.20,10),sweatMat);tip.position.set(.70,1.81,.43);group.add(tip);
-      }
-      return group;
-    };
-    const pads=new THREE.Group(); scene.add(pads);
-    const idolRoot=new THREE.Group();scene.add(idolRoot);
-    const effectRoot=new THREE.Group();scene.add(effectRoot);
-    const environment=new THREE.Group();scene.add(environment);
-    const towerPedestal=new THREE.Mesh(new THREE.CylinderGeometry(1.12,1.32,.42,12),mat('#9b7045'));towerPedestal.position.y=.04;towerPedestal.castShadow=true;towerPedestal.receiveShadow=true;pads.add(towerPedestal);
-    const pedestalTrim=new THREE.Mesh(new THREE.TorusGeometry(1.18,.06,8,48),mat('#e6c779',.38));pedestalTrim.rotation.x=Math.PI/2;pedestalTrim.position.y=.27;pads.add(pedestalTrim);
-    for(let i=0;i<9;i++){const palm=new THREE.Group(),x=(i%5-2)*5.1,z=(i<5?-6.4:6.4);const stem=new THREE.Mesh(new THREE.CylinderGeometry(.13,.25,3.1,7),mat('#8f683f'));stem.position.y=1.35;stem.rotation.z=(i%2?.1:-.1);stem.castShadow=true;palm.add(stem);for(let j=0;j<6;j++){const leaf=new THREE.Mesh(new THREE.ConeGeometry(.32,2.1,5),mat(j%2?'#386a46':'#548653'));leaf.position.set(Math.cos(j)*.8,2.9+Math.sin(j)*.15,Math.sin(j)*.8);leaf.rotation.z=-.8+Math.sin(j)*.5;leaf.rotation.x=Math.cos(j)*.6;palm.add(leaf)}palm.position.set(x,0,z);environment.add(palm)}
-    // Silhouettes at the four table corners keep the board feeling like a shared tabletop.
-    const seats=new THREE.Group();scene.add(seats);['#ed7965','#5db89b','#edbd58','#9b8ad7'].forEach((c,i)=>{const a=i*Math.PI/2+.5;const x=Math.cos(a)*6.25,z=Math.sin(a)*6.25;const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.43,.85,4,8),mat(c));torso.position.set(x,.75,z);torso.rotation.y=-a;torso.castShadow=true;seats.add(torso);const head=new THREE.Mesh(new THREE.SphereGeometry(.38,16,12),mat('#d9a876'));head.position.set(x,1.63,z);seats.add(head)});
-    const explosions=[]; const current={};
-    const createToastBurst=(tikiId)=>{
-      const tiki=TIKIS[tikiId]||TIKIS[0], origin=new THREE.Vector3(0,.78,0), start=performance.now();
-      const ring=new THREE.Mesh(new THREE.TorusGeometry(.42,.075,8,28),new THREE.MeshBasicMaterial({color:'#ffd778',transparent:true,opacity:1}));ring.position.copy(origin);effectRoot.add(ring);
-      const shards=[];
-      for(let i=0;i<14;i++){
-        const shard=new THREE.Mesh(new THREE.TetrahedronGeometry(.11+Math.random()*.12),new THREE.MeshBasicMaterial({color:i%2?tiki.color:'#ffd778',transparent:true,opacity:1}));
-        shard.position.copy(origin);effectRoot.add(shard);
-        const angle=i*Math.PI*2/14, speed=1.1+Math.random()*1.8;
-        shards.push({mesh:shard,velocity:new THREE.Vector3(Math.cos(angle)*speed,.8+Math.random()*1.8,Math.sin(angle)*speed)});
-      }
-      explosions.push({start,ring,shards});
-    };
-    const sync=()=>{
-      const data=dataRef.current;const source=decorative&&data.board.length===0?TIKIS.map((tiki,id)=>({id,...tiki,active:true})):data.board;const live=source.filter(t=>t.active); const signature=live.map(t=>`${t.id}:${t.color}`).join(',')+`:${data.secret.join(',')}`;
-      if(data.lastMove?.type==='toast'&&current.lastToastStamp!==data.lastMove.stamp){current.lastToastStamp=data.lastMove.stamp;createToastBurst(data.lastMove.tikiId)}
-      if(current.signature===signature&&current.decorative===decorative)return;
-      current.signature=signature;current.decorative=decorative;
-      const oldPositions=new Map(idolRoot.children.map(idol=>[idol.userData.id,idol.position.clone()]));
-      while(idolRoot.children.length){const old=idolRoot.children[0];old.traverse(object=>{if(object.isMesh){object.geometry.dispose();if(Array.isArray(object.material))object.material.forEach(material=>material.dispose());else object.material.dispose()}});idolRoot.remove(old)} activeRef.current=[];
-      const stackStep=1.52, baseY=.28, scale=decorative?.70:.70;
-      live.forEach((t,index)=>{const rank=index<3?index:-1,idol=makeTiki(t.color||TIKIS[t.id]?.color||'#96c86c',scale,t.expression||TIKIS[t.id]?.expression);const level=live.length-1-index;const target=new THREE.Vector3(level%2===0?.06:-.06,baseY+level*stackStep,0);const start=oldPositions.get(t.id)?.clone()||target.clone();idol.position.copy(start);const baseRotation=-.14;idol.rotation.y=baseRotation;idol.userData={id:t.id,start,target,moveStart:performance.now(),baseRotation,topple:data.lastMove?.type==='topple'&&data.lastMove.tikiId===t.id};
-        if(rank>=0){const scoreColor=['#ffd45f','#e6edf0','#d99562'][rank],badge=new THREE.Mesh(new THREE.TorusGeometry(.72,.08,8,28),new THREE.MeshStandardMaterial({color:scoreColor,emissive:scoreColor,emissiveIntensity:.7,roughness:.28}));badge.rotation.x=Math.PI/2;badge.position.y=.36;idol.add(badge)}
-        idolRoot.add(idol);activeRef.current.push(idol)});
-      current.lookAtY=baseY+Math.max(0,live.length-1)*stackStep/2+.9;
-    };
-    sync();
-    let down=null;
-    const pointerDown=e=>{down={x:e.clientX,y:e.clientY,theta:targetTheta.current};renderer.domElement.setPointerCapture?.(e.pointerId)};
-    const pointerMove=e=>{if(down){targetTheta.current=down.theta+(e.clientX-down.x)*.008}};
-    const pointerUp=e=>{if(!down)return;const dx=e.clientX-down.x,dy=e.clientY-down.y;if(Math.abs(dx)+Math.abs(dy)<8){const rect=node.getBoundingClientRect();const mouse=new THREE.Vector2((e.clientX-rect.left)/rect.width*2-1,-((e.clientY-rect.top)/rect.height*2-1));const ray=new THREE.Raycaster();ray.setFromCamera(mouse,camera);const hit=ray.intersectObjects(idolRoot.children,true)[0];if(hit){let root=hit.object;while(root.parent&&root.parent!==idolRoot)root=root.parent;if(root.parent===idolRoot)node.dispatchEvent(new CustomEvent('tiki-select',{detail:root.userData.id}))}}down=null};
-    renderer.domElement.addEventListener('pointerdown',pointerDown);renderer.domElement.addEventListener('pointermove',pointerMove);renderer.domElement.addEventListener('pointerup',pointerUp);
-    const onResize=()=>{const w=node.clientWidth,h=node.clientHeight;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h)};const resize=new ResizeObserver(onResize);resize.observe(node);
-    let raf;const render=()=>{raf=requestAnimationFrame(render);sync();if(decorative)targetTheta.current+=.00045;theta.current+=(targetTheta.current-theta.current)*.035;const r=23,lookY=current.lookAtY??6;camera.position.x=Math.sin(theta.current)*r;camera.position.z=Math.cos(theta.current)*r;camera.position.y=lookY+6.8;camera.lookAt(0,lookY,0);const now=performance.now();idolRoot.children.forEach((idol,i)=>{const amount=Math.min(1,(now-idol.userData.moveStart)/620);const eased=1-Math.pow(1-amount,3);idol.position.lerpVectors(idol.userData.start,idol.userData.target,eased);if(idol.userData.topple&&amount<1){idol.position.x+=Math.sin(eased*Math.PI)*.85;idol.position.y+=Math.sin(eased*Math.PI)*1.05;idol.rotation.y=idol.userData.baseRotation+eased*Math.PI*2}else idol.rotation.y=idol.userData.baseRotation;idol.position.y+=Math.sin(Date.now()*.0015+i*.8)*.018});
-      for(let i=explosions.length-1;i>=0;i--){const fx=explosions[i],progress=(now-fx.start)/900;if(progress>=1){effectRoot.remove(fx.ring);fx.ring.geometry.dispose();fx.ring.material.dispose();fx.shards.forEach(({mesh})=>{effectRoot.remove(mesh);mesh.geometry.dispose();mesh.material.dispose()});explosions.splice(i,1);continue}fx.ring.scale.setScalar(.8+progress*3.6);fx.ring.material.opacity=1-progress;fx.shards.forEach(({mesh,velocity})=>{mesh.position.copy(fx.ring.position).addScaledVector(velocity,progress);mesh.position.y-=2.2*progress*progress;mesh.rotation.set(progress*7,progress*9,progress*5);mesh.material.opacity=1-progress})}
-      renderer.render(scene,camera)};render();
-    return()=>{cancelAnimationFrame(raf);resize.disconnect();renderer.dispose();node.removeChild(renderer.domElement)};
-  },[sceneID,decorative]);
-  useEffect(()=>{const el=mount.current;if(!el)return;const handle=e=>onTikiClick?.(e.detail);el.addEventListener('tiki-select',handle);return()=>el.removeEventListener('tiki-select',handle)},[onTikiClick]);
-  return <div className={`three-scene ${decorative?'decorative':''} ${interactive?'interactive':''}`} ref={mount} aria-label="可旋轉的立體堤基圖騰場景"/>;
 }
 
 createRoot(document.getElementById('root')).render(<App/>);
