@@ -197,10 +197,10 @@ export const TikiTopple = {
 };
 
 function beginRound(G, ctx, random, events, first) {
+  const cardsToRemove = G.players.filter(pl => pl.joined).length >= 3 ? 2 : 1;
   G.players.forEach((p, i) => {
     if (!p.joined) { p.hand = []; p.secret = []; return; }
-    p.hand = shuffled(HAND, random);
-    if (G.players.filter(pl => pl.joined).length >= 3) p.hand.splice(p.hand.indexOf('up1'), 1);
+    p.hand = shuffled(HAND, random).slice(cardsToRemove);
     p.secret = shuffled(TIKIS.map((_, n) => n), random).slice(0, 3);
     p.roundScore = 0; p.roundPlays = 0; p.emoji = null;
     p.position = { ...START_POSITIONS[i] };
