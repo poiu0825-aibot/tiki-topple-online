@@ -1,13 +1,13 @@
 export const TIKIS = [
-  { name: '日耀', icon: '🌞', color: '#df554b' },
-  { name: '海龜', icon: '🐢', color: '#e8843d' },
-  { name: '鸚鵡', icon: '🦜', color: '#e0b63e' },
-  { name: '豹影', icon: '🐆', color: '#91a948' },
-  { name: '花冠', icon: '🌺', color: '#4e9a68' },
-  { name: '章魚', icon: '🐙', color: '#45a7a5' },
-  { name: '蜥蜴', icon: '🦎', color: '#568fc0' },
-  { name: '螃蟹', icon: '🦀', color: '#8c70b7' },
-  { name: '海魚', icon: '🐠', color: '#89949b' },
+  { name: '瞌睡', icon: '😴', color: '#96c86c', expression: 'sleepy' },
+  { name: '翻白眼', icon: '🙄', color: '#e8a159', expression: 'roll' },
+  { name: '笑臉', icon: '😄', color: '#f0cd68', expression: 'smile' },
+  { name: '不爽', icon: '😠', color: '#61bd78', expression: 'angry' },
+  { name: '不屑', icon: '😏', color: '#48b2a6', expression: 'smirk' },
+  { name: '汗顏', icon: '😓', color: '#72a9db', expression: 'sweat' },
+  { name: '眨眼', icon: '😉', color: '#aa85ca', expression: 'wink' },
+  { name: '驚訝', icon: '😲', color: '#dc7979', expression: 'surprised' },
+  { name: '平靜', icon: '😐', color: '#82c5c9', expression: 'neutral' },
 ];
 const HAND = ['up1', 'up1', 'up2', 'up2', 'up3', 'topple', 'toast'];
 const shuffled = (items, random) => {
@@ -54,7 +54,7 @@ export const TikiTopple = {
         LeaveGame: (...args) => TikiTopple.moves.LeaveGame(...args),
       } },
       play: { moves: {
-        PlayCard: ({ G, playerID, ctx, events }, cardIndex, tikiId) => {
+        PlayCard: ({ G, playerID, ctx, events }, cardIndex, tikiId, secondTikiId) => {
           const p = G.players[playerIndex(playerID)];
           if (!p || G.phase !== 'playing' || String(playerID) !== String(ctx.currentPlayer)) return;
           const card = p.hand[cardIndex];
@@ -74,6 +74,12 @@ export const TikiTopple = {
             const [moving] = active.splice(index, 1); active.push(moving);
             G.board = [...active, ...G.board.filter(t => !t.active)];
             G.lastMove = { type: 'topple', tikiId, by: playerID, stamp: G.roundTurn };
+          } else if (card === 'swap') {
+            const secondIndex = active.findIndex(t => t.id === secondTikiId);
+            if (secondIndex < 0 || secondIndex === index) return;
+            [active[index], active[secondIndex]] = [active[secondIndex], active[index]];
+            G.board = [...active, ...G.board.filter(t => !t.active)];
+            G.lastMove = { type: 'swap', tikiId, secondTikiId, by: playerID, stamp: G.roundTurn };
           } else {
             const bottom = active.at(-1);
             if (!bottom || bottom.id !== tikiId) return;
