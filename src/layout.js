@@ -27,3 +27,14 @@ export function clampPlayerPosition(position) {
 export function distance2D(a, b) {
   return Math.hypot(a.x - b.x, a.z - b.z);
 }
+
+export function nearestTikiIndex(position, active) {
+  if (!position || !active?.length) return -1;
+  let nearest = -1;
+  let nearestDistance = ACTION_RADIUS;
+  active.forEach((_, index) => {
+    const distance = distance2D(position, tilePosition(index, active.length));
+    if (distance <= nearestDistance) { nearest = index; nearestDistance = distance; }
+  });
+  return nearest;
+}
