@@ -8,8 +8,9 @@ import { TikiTopple } from './game.js';
 import './style.css';
 
 const SERVER_HOST = `${location.protocol}//${location.hostname}`;
-const API = import.meta.env.VITE_GAME_SERVER || `${SERVER_HOST}:8000`;
-const CHAT = import.meta.env.VITE_CHAT_SERVER || `${SERVER_HOST}:8001`;
+const API = import.meta.env.VITE_GAME_SERVER || (import.meta.env.DEV ? `${SERVER_HOST}:8000` : location.origin);
+const CHAT = import.meta.env.VITE_CHAT_SERVER || (import.meta.env.DEV ? `${SERVER_HOST}:8001` : location.origin);
+const CHAT_PATH = import.meta.env.DEV ? '/socket.io' : '/chat/socket.io';
 const COLORS = [{ id:'coral', name:'珊瑚紅', hex:'#ed7965' }, { id:'jade', name:'翡翠綠', hex:'#5db89b' }, { id:'sun', name:'日光黃', hex:'#edbd58' }, { id:'lavender', name:'薰衣草', hex:'#9b8ad7' }];
 const QUICK = [{emoji:'⏰', phrase:'快點出牌啦！'}, {emoji:'😏', phrase:'這步真精彩呢。'}, {emoji:'😱', phrase:'不會吧！'}, {emoji:'🙏', phrase:'謝謝你！'}];
 const newID = () => `guest-${Math.random().toString(36).slice(2,9)}`;
@@ -75,7 +76,7 @@ function App() {
     setRoom(session); setPlayer(session); setModal(''); setScreen('game'); history.replaceState({}, '', `?room=${encodeURIComponent(session.matchID)}`);
     const bgio = Client({ game:TikiTopple, multiplayer:SocketIO({ server:API }), matchID:session.matchID, playerID:session.playerID, credentials:session.credentials });
     bgio.start(); bgio.subscribe(state => setGameState(state)); setClient(bgio);
-    const chat = io(CHAT); chat.on('connect', () => chat.emit('room:join', { room:session.matchID, name:name.trim() }));
+    const chat = io(CHAT, { path: CHAT_PATH }); chat.on('connect', () => chat.emit('room:join', { room:session.matchID, name:name.trim() }));
     ['chat:message','chat:system','chat:emote'].forEach(event => chat.on(event, message => setMessages(prev => [...prev.slice(-70), { ...message, kind:event.replace('chat:','') }] )));
     setPlayer({ ...session, chat });
   }
