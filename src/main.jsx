@@ -136,7 +136,7 @@ function GameRoom({G,ctx,player,room,name,isMyTurn,client,messages,chatRef,chatT
     <div className="game-layout"><section className="table-column">
       <div className="round-strip"><span className="round-pill">第 {G?.round||1} 局</span><span className="turn-message">{G?.phase==='lobby'?'準備好顏色後，房主即可開始':G?.phase==='rps'?'顏色撞車！出拳決定誰保留顏色':G?.phase==='roundEnd'||G?.phase==='gameEnd'?'本局結束，看看誰的圖騰站上高位':isMyTurn?'輪到你出牌':'等待 '+(G?.players?.[Number(currentID)]?.name||'玩家')+' 出牌'}</span><button className="icon-button" onClick={()=>setRulesOpen(v=>!v)}>ⓘ 規則</button></div>
       <div className="board-wrap"><div className="seat seat-top">{sortedPlayers.find(p=>Number(p.id)===(Number(player?.playerID)+2)%Math.max(2,G?.players?.length||2))?.name||'等候玩家'}</div><div className="seat seat-left">{sortedPlayers.find(p=>Number(p.id)===(Number(player?.playerID)+1)%Math.max(2,G?.players?.length||2))?.name||'等候玩家'}</div><div className="seat seat-right">{sortedPlayers.find(p=>Number(p.id)===(Number(player?.playerID)+3)%Math.max(2,G?.players?.length||2))?.name||''}</div>
-        <div className="scene-panel"><TikiScene board={G?.board||[]} lastMove={G?.lastMove} interactive onTikiClick={id=>setToastTiki(id)} secret={showSecret?me?.secret:[]} />{G?.lastMove?.type==='toast'&&<div className="toast-fx" key={G.lastMove.stamp}>💥</div>}<div className="scene-label">{active.length} 座圖騰尚在場上</div><button className="rotate-tip" onClick={e=>e.currentTarget.classList.toggle('tip-hide')}>⟳　拖曳旋轉視角</button></div>
+        <div className="scene-panel"><TikiScene board={G?.board||[]} lastMove={G?.lastMove} interactive onTikiClick={id=>setToastTiki(id)} secret={showSecret?me?.secret:[]} /><div className="scene-label">塔頂三座計分 · {active.length} 座圖騰仍在塔上</div><button className="rotate-tip" onClick={e=>e.currentTarget.classList.toggle('tip-hide')}>⟳　拖曳旋轉視角</button></div>
         <div className="seat seat-bottom">{me?.name||name} <span>你</span></div>
       </div>
       {G?.phase==='lobby'&&<div className="pre-game-panel"><div><b>選擇你的顏色</b><small>相同顏色會在開局前猜拳決定</small></div><div className="color-choices">{COLORS.map(c=><button key={c.id} title={c.name} className={me?.preferredColor===c.id?'selected':''} style={{'--swatch':c.hex}} onClick={()=>client.moves.SetProfile({name,color:me?.preferredColor===c.id?null:c.id})}><i/>{me?.preferredColor===c.id&&'✓'}</button>)}</div>{isHost?<button className="start-button" onClick={start} disabled={sortedPlayers.length<2}>{sortedPlayers.length<2?'等待至少 2 位玩家':'開始遊戲 →'}</button>:<span className="host-note">等待房主開始遊戲…</span>}</div>}
@@ -162,7 +162,7 @@ function TikiScene({board=[],decorative=false,lastMove,interactive=false,secret=
   useEffect(()=>{
     const node=mount.current; if(!node)return;
     const scene=new THREE.Scene(); scene.background=new THREE.Color(decorative?'#183e39':'#193f39'); scene.fog=new THREE.FogExp2('#193f39',.035);
-    const camera=new THREE.PerspectiveCamera(32,node.clientWidth/node.clientHeight,.1,100); camera.position.set(0,7,17); camera.lookAt(0,2.2,0); cameraRef.current=camera;
+    const camera=new THREE.PerspectiveCamera(38,node.clientWidth/node.clientHeight,.1,100); camera.position.set(0,12,23); camera.lookAt(0,6,0); cameraRef.current=camera;
     const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false}); renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(node.clientWidth,node.clientHeight); renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap; renderer.outputColorSpace=THREE.SRGBColorSpace; renderer.toneMapping=THREE.ACESFilmicToneMapping; node.appendChild(renderer.domElement);
     scene.add(new THREE.HemisphereLight('#ddf5dc','#3a2d22',2.2)); const sun=new THREE.DirectionalLight('#fff0c9',3.3); sun.position.set(-6,10,7); sun.castShadow=true; scene.add(sun); const fill=new THREE.PointLight('#76d3a6',18,30); fill.position.set(5,5,-4); scene.add(fill);
     const floor=new THREE.Mesh(new THREE.CircleGeometry(17,80),new THREE.MeshStandardMaterial({color:'#28614d',roughness:.93})); floor.rotation.x=-Math.PI/2; floor.position.y=-.2; floor.receiveShadow=true; scene.add(floor);
@@ -186,24 +186,38 @@ function TikiScene({board=[],decorative=false,lastMove,interactive=false,secret=
     };
     const pads=new THREE.Group(); scene.add(pads);
     const idolRoot=new THREE.Group();scene.add(idolRoot);
+    const effectRoot=new THREE.Group();scene.add(effectRoot);
     const environment=new THREE.Group();scene.add(environment);
-    for(let n=0;n<9;n++){
-      const x=(n-4)*1.05;
-      const pad=new THREE.Mesh(new THREE.CylinderGeometry(.52,.58,.15,24),mat(n%2?'#ccad79':'#e5c797'));pad.position.set(x,.39,0);pad.receiveShadow=true;pad.castShadow=true;pads.add(pad);
-      const post=new THREE.Mesh(new THREE.CylinderGeometry(.07,.09,.6,9),mat('#4a3527'));post.position.set(x,.7,0);pads.add(post);
-      const glow=new THREE.Mesh(new THREE.TorusGeometry(.38,.025,6,32),mat('#dbb66f'));glow.rotation.x=Math.PI/2;glow.position.set(x,.49,0);pads.add(glow);
-    }
+    const towerPedestal=new THREE.Mesh(new THREE.CylinderGeometry(1.12,1.32,.42,12),mat('#9b7045'));towerPedestal.position.y=.04;towerPedestal.castShadow=true;towerPedestal.receiveShadow=true;pads.add(towerPedestal);
+    const pedestalTrim=new THREE.Mesh(new THREE.TorusGeometry(1.18,.06,8,48),mat('#e6c779',.38));pedestalTrim.rotation.x=Math.PI/2;pedestalTrim.position.y=.27;pads.add(pedestalTrim);
     for(let i=0;i<9;i++){const palm=new THREE.Group(),x=(i%5-2)*5.1,z=(i<5?-6.4:6.4);const stem=new THREE.Mesh(new THREE.CylinderGeometry(.13,.25,3.1,7),mat('#8f683f'));stem.position.y=1.35;stem.rotation.z=(i%2?.1:-.1);stem.castShadow=true;palm.add(stem);for(let j=0;j<6;j++){const leaf=new THREE.Mesh(new THREE.ConeGeometry(.32,2.1,5),mat(j%2?'#386a46':'#548653'));leaf.position.set(Math.cos(j)*.8,2.9+Math.sin(j)*.15,Math.sin(j)*.8);leaf.rotation.z=-.8+Math.sin(j)*.5;leaf.rotation.x=Math.cos(j)*.6;palm.add(leaf)}palm.position.set(x,0,z);environment.add(palm)}
     // Silhouettes at the four table corners keep the board feeling like a shared tabletop.
     const seats=new THREE.Group();scene.add(seats);['#ed7965','#5db89b','#edbd58','#9b8ad7'].forEach((c,i)=>{const a=i*Math.PI/2+.5;const x=Math.cos(a)*6.25,z=Math.sin(a)*6.25;const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.43,.85,4,8),mat(c));torso.position.set(x,.75,z);torso.rotation.y=-a;torso.castShadow=true;seats.add(torso);const head=new THREE.Mesh(new THREE.SphereGeometry(.38,16,12),mat('#d9a876'));head.position.set(x,1.63,z);seats.add(head)});
-    const particles=[]; const current={};
+    const explosions=[]; const current={};
+    const createToastBurst=(tikiId)=>{
+      const tiki=TIKIS[tikiId]||TIKIS[0], origin=new THREE.Vector3(0,.78,0), start=performance.now();
+      const ring=new THREE.Mesh(new THREE.TorusGeometry(.42,.075,8,28),new THREE.MeshBasicMaterial({color:'#ffd778',transparent:true,opacity:1}));ring.position.copy(origin);effectRoot.add(ring);
+      const shards=[];
+      for(let i=0;i<14;i++){
+        const shard=new THREE.Mesh(new THREE.TetrahedronGeometry(.11+Math.random()*.12),new THREE.MeshBasicMaterial({color:i%2?tiki.color:'#ffd778',transparent:true,opacity:1}));
+        shard.position.copy(origin);effectRoot.add(shard);
+        const angle=i*Math.PI*2/14, speed=1.1+Math.random()*1.8;
+        shards.push({mesh:shard,velocity:new THREE.Vector3(Math.cos(angle)*speed,.8+Math.random()*1.8,Math.sin(angle)*speed)});
+      }
+      explosions.push({start,ring,shards});
+    };
     const sync=()=>{
       const data=dataRef.current;const source=decorative&&data.board.length===0?TIKIS.map((tiki,id)=>({id,...tiki,active:true})):data.board;const live=source.filter(t=>t.active); const signature=live.map(t=>`${t.id}:${t.color}`).join(',')+`:${data.secret.join(',')}`;
+      if(data.lastMove?.type==='toast'&&current.lastToastStamp!==data.lastMove.stamp){current.lastToastStamp=data.lastMove.stamp;createToastBurst(data.lastMove.tikiId)}
       if(current.signature===signature&&current.decorative===decorative)return;
       current.signature=signature;current.decorative=decorative;
       const oldPositions=new Map(idolRoot.children.map(idol=>[idol.userData.id,idol.position.clone()]));
-      while(idolRoot.children.length)idolRoot.remove(idolRoot.children[0]); activeRef.current=[];
-      live.forEach((t,index)=>{const idol=makeTiki(t.color||TIKIS[t.id]?.color||'#bd9060',decorative?.78:.60);const target=new THREE.Vector3((index-(live.length-1)/2)*1.04,.46,.06);const start=oldPositions.get(t.id)?.clone()||target.clone();idol.position.copy(start);idol.rotation.y=(index%2?-.12:.12);idol.userData={id:t.id,start,target,moveStart:performance.now()};idolRoot.add(idol);activeRef.current.push(idol)});
+      while(idolRoot.children.length){const old=idolRoot.children[0];old.traverse(object=>{if(object.isMesh){object.geometry.dispose();if(Array.isArray(object.material))object.material.forEach(material=>material.dispose());else object.material.dispose()}});idolRoot.remove(old)} activeRef.current=[];
+      const stackStep=1.52, baseY=.28, scale=decorative?.64:.64;
+      live.forEach((t,index)=>{const rank=index<3?index:-1,idol=makeTiki(t.color||TIKIS[t.id]?.color||'#bd9060',scale);const level=live.length-1-index;const target=new THREE.Vector3(level%2===0?.06:-.06,baseY+level*stackStep,0);const start=oldPositions.get(t.id)?.clone()||target.clone();idol.position.copy(start);const baseRotation=level%2?Math.PI+.14:-.14;idol.rotation.y=baseRotation;idol.userData={id:t.id,start,target,moveStart:performance.now(),baseRotation,topple:data.lastMove?.type==='topple'&&data.lastMove.tikiId===t.id};
+        if(rank>=0){const scoreColor=['#ffd45f','#e6edf0','#d99562'][rank],badge=new THREE.Mesh(new THREE.TorusGeometry(.19,.035,7,24),new THREE.MeshStandardMaterial({color:scoreColor,emissive:scoreColor,emissiveIntensity:.35,roughness:.35}));badge.position.set(0,1.62,.48);idol.add(badge)}
+        idolRoot.add(idol);activeRef.current.push(idol)});
+      current.lookAtY=baseY+Math.max(0,live.length-1)*stackStep/2+.9;
     };
     sync();
     let down=null;
@@ -212,7 +226,9 @@ function TikiScene({board=[],decorative=false,lastMove,interactive=false,secret=
     const pointerUp=e=>{if(!down)return;const dx=e.clientX-down.x,dy=e.clientY-down.y;if(Math.abs(dx)+Math.abs(dy)<8){const rect=node.getBoundingClientRect();const mouse=new THREE.Vector2((e.clientX-rect.left)/rect.width*2-1,-((e.clientY-rect.top)/rect.height*2-1));const ray=new THREE.Raycaster();ray.setFromCamera(mouse,camera);const hit=ray.intersectObjects(idolRoot.children,true)[0];if(hit){let root=hit.object;while(root.parent&&root.parent!==idolRoot)root=root.parent;if(root.parent===idolRoot)node.dispatchEvent(new CustomEvent('tiki-select',{detail:root.userData.id}))}}down=null};
     renderer.domElement.addEventListener('pointerdown',pointerDown);renderer.domElement.addEventListener('pointermove',pointerMove);renderer.domElement.addEventListener('pointerup',pointerUp);
     const onResize=()=>{const w=node.clientWidth,h=node.clientHeight;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h)};const resize=new ResizeObserver(onResize);resize.observe(node);
-    let raf;const render=()=>{raf=requestAnimationFrame(render);sync();if(decorative)targetTheta.current+=.00045;theta.current+=(targetTheta.current-theta.current)*.035;const r=16;camera.position.x=Math.sin(theta.current)*r;camera.position.z=Math.cos(theta.current)*r;camera.position.y=decorative?7.1:7.4;camera.lookAt(0,1.6,0);const now=performance.now();idolRoot.children.forEach((idol,i)=>{const amount=Math.min(1,(now-idol.userData.moveStart)/520);const eased=1-Math.pow(1-amount,3);idol.position.lerpVectors(idol.userData.start,idol.userData.target,eased);idol.position.y+=Math.sin(Date.now()*.0015+i*.8)*.025});renderer.render(scene,camera)};render();
+    let raf;const render=()=>{raf=requestAnimationFrame(render);sync();if(decorative)targetTheta.current+=.00045;theta.current+=(targetTheta.current-theta.current)*.035;const r=23,lookY=current.lookAtY??6;camera.position.x=Math.sin(theta.current)*r;camera.position.z=Math.cos(theta.current)*r;camera.position.y=lookY+6.8;camera.lookAt(0,lookY,0);const now=performance.now();idolRoot.children.forEach((idol,i)=>{const amount=Math.min(1,(now-idol.userData.moveStart)/620);const eased=1-Math.pow(1-amount,3);idol.position.lerpVectors(idol.userData.start,idol.userData.target,eased);if(idol.userData.topple&&amount<1){idol.position.x+=Math.sin(eased*Math.PI)*.85;idol.position.y+=Math.sin(eased*Math.PI)*1.05;idol.rotation.y=idol.userData.baseRotation+eased*Math.PI*2}else idol.rotation.y=idol.userData.baseRotation;idol.position.y+=Math.sin(Date.now()*.0015+i*.8)*.018});
+      for(let i=explosions.length-1;i>=0;i--){const fx=explosions[i],progress=(now-fx.start)/900;if(progress>=1){effectRoot.remove(fx.ring);fx.ring.geometry.dispose();fx.ring.material.dispose();fx.shards.forEach(({mesh})=>{effectRoot.remove(mesh);mesh.geometry.dispose();mesh.material.dispose()});explosions.splice(i,1);continue}fx.ring.scale.setScalar(.8+progress*3.6);fx.ring.material.opacity=1-progress;fx.shards.forEach(({mesh,velocity})=>{mesh.position.copy(fx.ring.position).addScaledVector(velocity,progress);mesh.position.y-=2.2*progress*progress;mesh.rotation.set(progress*7,progress*9,progress*5);mesh.material.opacity=1-progress})}
+      renderer.render(scene,camera)};render();
     return()=>{cancelAnimationFrame(raf);resize.disconnect();renderer.dispose();node.removeChild(renderer.domElement)};
   },[sceneID,decorative]);
   useEffect(()=>{const el=mount.current;if(!el)return;const handle=e=>onTikiClick?.(e.detail);el.addEventListener('tiki-select',handle);return()=>el.removeEventListener('tiki-select',handle)},[onTikiClick]);
