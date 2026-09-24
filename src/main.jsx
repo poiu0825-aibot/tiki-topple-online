@@ -4,7 +4,7 @@ import { Client } from 'boardgame.io/client';
 import { SocketIO } from 'boardgame.io/multiplayer';
 import { io } from 'socket.io-client';
 import { TikiTopple, TIKIS } from './game.js';
-import { ACTION_RADIUS, distance2D, tilePosition, walkingSpot } from './layout.js';
+import { nearestTikiIndex, walkingSpot } from './layout.js';
 import { tikiImageUrl } from './tikiArt.js';
 import TikiScene from './TikiScene.jsx';
 import './style.css';
@@ -122,26 +122,24 @@ function TikiPortrait({tiki,size=48}) {
 function GameRoom({G,ctx,player,room,name,isMyTurn,client,messages,chatRef,chatText,setChatText,sendChat,quickSend,currentID,rulesOpen,setRulesOpen,link,leaveRoom}) {
   const [copied,setCopied]=useState(false), [picked,setPicked]=useState(null), [showSecret,setShowSecret]=useState(true), [turnHint,setTurnHint]=useState(false);
   const [rps,setRps]=useState('');
-  const [selectedHeads,setSelectedHeads]=useState([]);
+  const [swapTarget,setSwapTarget]=useState(null);
   const [walkDestination,setWalkDestination]=useState(null);
   const isHost=player?.host||String(G?.hostID)===String(player?.playerID);
   const me=G?.players?.[Number(player?.playerID)];
   useEffect(()=>{ if(!G||!me||!client)return; if(['lobby','roundEnd'].includes(G.phase)) client.moves.SetProfile({name, color:me.preferredColor}); },[name,me?.preferredColor,G?.phase]);
   useEffect(()=>{if(!turnHint)return;const timer=setTimeout(()=>setTurnHint(false),2200);return()=>clearTimeout(timer)},[turnHint]);
+  useEffect(()=>{if(G?.lastPush&&String(G.lastPush.targetID)===String(player?.playerID))setWalkDestination(null)},[G?.lastPush?.stamp,player?.playerID]);
   const active=G?.board?.filter(t=>t.active)||[];
   const selectedCard=picked===null?null:me?.hand?.[picked];
-  const targetCount=selectedCard==='swap'?2:1;
-  const firstTargetIndex=active.findIndex(t=>t.id===selectedHeads[0]);
-  const targetAllowed=(tiki,index)=>!(selectedCard?.startsWith('up')&&index<Number(selectedCard.slice(2)))&&!(selectedCard==='toast'&&((me?.roundPlays||0)===0||index!==active.length-1));
-  const targetPlace=firstTargetIndex<0?null:tilePosition(firstTargetIndex,active.length);
-  const distanceToTarget=targetPlace&&me?.position?distance2D(me.position,targetPlace):Infinity;
-  const nearTarget=distanceToTarget<=ACTION_RADIUS;
-  const selectedCardValid=Boolean(selectedCard)&&selectedHeads.length===targetCount&&selectedHeads.every(id=>active.some(t=>t.id===id))&&targetAllowed(active[firstTargetIndex],firstTargetIndex)&&nearTarget;
-  const selectionHint=selectedCard?.startsWith('up')?`上移 ${selectedCard.slice(2)} 格：請選第 ${Number(selectedCard.slice(2))+1} 位或更後方的圖騰。`:selectedCard==='toast'?'爆破牌只能選最後一位圖騰。':selectedCard==='swap'?'互換需要依序選兩個不同圖騰。':'選一個要操作的人頭。';
+  const standingIndex=nearestTikiIndex(me?.position,active);
+  const standingHead=standingIndex<0?null:active[standingIndex];
+  const targetAllowed=Boolean(standingHead)&&!(selectedCard?.startsWith('up')&&standingIndex<Number(selectedCard.slice(2)))&&!(selectedCard==='toast'&&((me?.roundPlays||0)===0||standingIndex!==active.length-1));
+  const selectedCardValid=Boolean(selectedCard)&&targetAllowed&&(selectedCard!=='swap'||(swapTarget!==null&&swapTarget!==standingHead.id&&active.some(t=>t.id===swapTarget)));
+  const selectionHint=selectedCard?.startsWith('up')?`這張牌要站在第 ${Number(selectedCard.slice(2))+1} 位或更後方。`:selectedCard==='toast'?'爆破只能站在最後一位人頭旁使用。':selectedCard==='swap'?'第一張依站立位置決定；再選第二張。':'目標依目前站立位置決定。';
   const selectHead=(id)=>{
-    const index=active.findIndex(t=>t.id===id),tiki=active[index];if(!isMyTurn||!selectedCard||!tiki||!targetAllowed(tiki,index))return;
-    setSelectedHeads(previous=>previous.includes(id)?previous.filter(item=>item!==id):targetCount===1?[id]:previous.length<2?[...previous,id]:[previous[1],id]);
-    setWalkDestination({id:targetCount===2&&selectedHeads[0]!==undefined?selectedHeads[0]:id});
+    if(G?.phase!=='playing'||!active.some(t=>t.id===id))return;
+    if(selectedCard==='swap'&&standingHead&&id!==standingHead.id){setSwapTarget(id);return;}
+    setWalkDestination({id});
   };
   useEffect(()=>{
     if(!walkDestination||!client||G?.phase!=='playing'||!me?.position)return;
@@ -161,33 +159,36 @@ function GameRoom({G,ctx,player,room,name,isMyTurn,client,messages,chatRef,chatT
     const timer=setTimeout(()=>client.moves.MovePlayer(dx,dz),105);
     return()=>clearTimeout(timer);
   },[walkDestination,me?.position?.x,me?.position?.z,G?.phase,G?.players?.[Number(walkDestination?.playerID)]?.position?.x,G?.players?.[Number(walkDestination?.playerID)]?.position?.z,active.map(t=>t.id).join(','),client]);
-  const doMove=()=>{if(picked===null||!isMyTurn||!selectedCardValid)return;client.moves.PlayCard(picked,selectedHeads[0],selectedHeads[1]);setPicked(null);setSelectedHeads([]);setWalkDestination(null)};
+  const doMove=()=>{if(picked===null||!isMyTurn||!selectedCardValid)return;client.moves.PlayCard(picked,swapTarget);setPicked(null);setSwapTarget(null);setWalkDestination(null)};
   const sortedPlayers=G?.players?.map((p,i)=>({...p,id:String(i)})).filter(p=>p.joined)||[];
   const start=()=>client.moves.StartGame(G.targetScore);
   const copy=async()=>{await navigator.clipboard?.writeText(link);setCopied(true);setTimeout(()=>setCopied(false),1300)};
-  const targetTiki=G?.board?.filter(t=>t.active).at(-1);
+  const liveScore=me?.secret?.reduce((sum,id,order)=>{const rank=active.findIndex(t=>t.id===id);return sum+(rank>=0&&rank<=order?[9,5,2][order]:0)},0)||0;
   return <main className="game-screen">
     <header className="gamebar"><button className="back-button" onClick={leaveRoom}>← <span>返回首頁</span></button><div className="brand game-brand"><span className="brand-mark">T</span> ISLAND<span className="brand-light">TABLE</span></div><div className="room-code"><span>配對碼</span><b>{room?.matchID}</b><button onClick={copy}>{copied?'已複製':'複製連結 ↗'}</button></div></header>
     <div className="game-layout"><section className="table-column">
-      <div className="round-strip"><span className="round-pill">第 {G?.round||1} 局</span><span className="turn-message">{G?.phase==='lobby'?'準備好顏色後，房主即可開始':G?.phase==='rps'?'顏色撞車！出拳決定誰保留顏色':G?.phase==='roundEnd'||G?.phase==='gameEnd'?'本局結束，看看誰的圖騰站上高位':isMyTurn?'輪到你出牌':'等待 '+(G?.players?.[Number(currentID)]?.name||'玩家')+' 出牌'}</span><button className="icon-button" onClick={()=>setRulesOpen(v=>!v)}>ⓘ 規則</button></div>
+      <div className="round-strip"><span className="round-pill">第 {G?.round||1} 局</span><span className="turn-message">{G?.phase==='lobby'?'準備好顏色後，房主即可開始':G?.phase==='rps'?'顏色撞車！出拳決定誰保留顏色':G?.phase==='roundEnd'||G?.phase==='gameEnd'?'本局結束，看看誰的圖騰站上高位':isMyTurn?'輪到你出牌':'等待 '+(G?.players?.[Number(currentID)]?.name||'玩家')+' 出牌'}</span>{rulesOpen&&<span className="round-rules"><span>🥇1 位 9 分</span><span>🥈前 2 位 5 分</span><span>🥉前 3 位 2 分</span><span className="rule-goal">目標 {G?.targetScore||30} 分</span></span>}<button className="icon-button rules-toggle" aria-expanded={rulesOpen} onClick={()=>setRulesOpen(v=>!v)}>ⓘ 規則 {rulesOpen?'⌃':'⌄'}</button></div>
        <div className="board-wrap">
-         <div className="scene-panel"><TikiScene board={G?.board||[]} players={G?.players||[]} myPlayerID={player?.playerID} canWalk={G?.phase==='playing'} lastMove={G?.lastMove} lastPush={G?.lastPush} messages={messages} selectedHead={selectedHeads[0]} interactive onTikiClick={selectHead} onPlayerClick={id=>{if(G?.phase==='playing'&&String(id)!==String(player?.playerID))setWalkDestination({playerID:String(id)})}} onWalk={(dx,dz)=>{setWalkDestination(null);client?.moves.MovePlayer(dx,dz)}} onGroundClick={point=>{if(isMyTurn)setTurnHint(true);setWalkDestination(point)}} /><div className="scene-label">第 1～3 位計分 · {active.length} 張人頭仍在地板上</div><div className="walk-tip">拖曳旋轉／上下調視角 · 雙指縮放 · 點玩家推擠</div>
+         <div className="scene-panel"><TikiScene board={G?.board||[]} players={G?.players||[]} myPlayerID={player?.playerID} canWalk={G?.phase==='playing'} lastMove={G?.lastMove} lastPush={G?.lastPush} messages={messages} selectedHead={standingHead?.id} interactive onTikiClick={selectHead} onPlayerClick={id=>{if(G?.phase==='playing'&&String(id)!==String(player?.playerID))setWalkDestination({playerID:String(id)})}} onWalk={(dx,dz)=>{setWalkDestination(null);client?.moves.MovePlayer(dx,dz)}} onGroundClick={point=>{if(isMyTurn)setTurnHint(true);setWalkDestination(point)}} /><div className="scene-label">第 1～3 位計分 · {active.length} 張人頭仍在地板上</div><div className="walk-tip">拖曳旋轉／上下調視角 · 雙指縮放 · 點玩家推擠</div>
          </div>
          {G?.phase==='playing'&&<div className={`scene-secret ${showSecret?'expanded':''}`}><button className="scene-secret-toggle" onClick={()=>setShowSecret(v=>!v)} aria-expanded={showSecret}>◉ 我的任務 {showSecret?'⌃':'⌄'}</button>{showSecret&&<div className="scene-secret-list">{me?.secret?.map((id,index)=>{const tiki=TIKIS[id];return <span className="scene-secret-item" key={id}><b>{['1','2','3'][index]}</b><TikiPortrait tiki={tiki} size={32}/><small>{tiki.name}</small></span>})}</div>}</div>}
          {turnHint&&isMyTurn&&<div className="turn-toast" role="status">輪到你行動了！</div>}
+         {G?.phase==='playing'&&<div className="scene-quick" aria-label="快速對話">{QUICK.map(item=><button key={item.emoji} title={item.phrase} aria-label={item.phrase} onClick={()=>quickSend(item)}>{item.emoji}</button>)}</div>}
        </div>
        {G?.phase==='lobby'&&<div className="pre-game-panel"><div className="lobby-title"><b>選擇你的顏色</b><small>撞色會在開局前猜拳</small></div><span className="lobby-status">{sortedPlayers.length<2?`等待至少 2 位玩家 · ${sortedPlayers.length}/2`:`已加入 ${sortedPlayers.length} 位`}</span><div className="color-choices">{COLORS.map(c=><button key={c.id} title={c.name} className={me?.preferredColor===c.id?'selected':''} style={{'--swatch':c.hex}} onClick={()=>client.moves.SetProfile({name,color:me?.preferredColor===c.id?null:c.id})}><i/>{me?.preferredColor===c.id&&'✓'}</button>)}</div>{isHost?<button className="start-button" onClick={start} disabled={sortedPlayers.length<2}>開始遊戲 →</button>:<span className="host-note">等待房主…</span>}</div>}
       {G?.phase==='rps'&&<div className="pre-game-panel rps-panel"><div><b>猜拳決定顏色</b><small>選一個手勢；房主完成後開始</small></div><div className="rps-buttons">{[['rock','✊'],['paper','✋'],['scissors','✌️']].map(([key,emoji])=><button className={rps===key?'selected':''} key={key} onClick={()=>{setRps(key);client.moves.PickRps(key)}}>{emoji}</button>)}</div>{isHost&&<button className="start-button" disabled={G.players.some(p=>p.joined&&!p.rps)} onClick={()=>client.moves.ResolveRps()}>揭曉結果 →</button>}</div>}
+      {G?.phase==='playing'&&<div className="live-score"><span>本場即時得分</span><b>{liveScore} 分</b><small>若依目前人頭順位結算</small></div>}
       {G?.phase==='playing'&&<div className="hand-zone">
-        <div className="hand-header"><span><b>你的手牌</b> <small>{me?.hand?.length||0} 張</small></span><small>任務圖騰顯示在場景左側</small></div>
-        <div className="card-fan">{me?.hand?.map((card,index)=><button className={`action-card ${picked===index?'picked':''}`} key={`${card}-${index}`} style={{'--tilt':`${(index-(me.hand.length-1)/2)*3}deg`,'--order':index}} onClick={()=>{setPicked(index);setSelectedHeads([]);setWalkDestination(null)}} disabled={!isMyTurn||(card==='toast'&&(me?.roundPlays||0)===0)} title={card==='toast'&&(me?.roundPlays||0)===0?'爆破牌不能在你本局第一回合使用':'選取行動牌'}><span className="card-spark">✳</span><b>{card==='topple'?'推倒':card==='toast'?'爆破':card==='swap'?'互換':`上移 ${card.slice(2)}`}</b><i>{card==='topple'?'↓↓':card==='toast'?'✹':card==='swap'?'⇄':`↑${card.slice(2)}`}</i><small>{card==='topple'?'TOPPLE':card==='toast'?'TOAST':card==='swap'?'SWAP':'TIKI UP'}</small></button>)}</div>
-        {isMyTurn&&selectedCard&&<div className="head-picker inline-picker" role="group" aria-label="選擇本次行動的圖騰"><div className="head-picker-header"><div><b>{selectedCard==='swap'?'依序選擇要互換的兩張人頭':'選擇地板上的人頭'}</b><small>{selectionHint} 點圖案後，火柴人會走向它。</small></div><button onClick={()=>{setPicked(null);setSelectedHeads([]);setWalkDestination(null)}} aria-label="取消選擇">×</button></div><div className="head-picker-grid">{active.map((tiki,index)=>{const portrait=TIKIS[tiki.id],selected=selectedHeads.includes(tiki.id),disabled=!targetAllowed(tiki,index);return <button key={tiki.id} className={`head-choice ${selected?'selected':''}`} disabled={disabled} onClick={()=>selectHead(tiki.id)} title={`${portrait.name}，第 ${index+1} 位`}><TikiPortrait tiki={portrait} size={52}/><span>{portrait.name}</span><small>第 {index+1} 位</small>{selected&&<i>{selectedHeads.indexOf(tiki.id)+1}</i>}</button>})}</div><div className="head-picker-footer"><span>{selectedHeads.length<targetCount?`請選 ${targetCount} 張人頭（${selectedHeads.length}/${targetCount}）`:nearTarget?'已走到目標旁，可確定行動。':`請走到第 ${firstTargetIndex+1} 位人頭旁，還有 ${distanceToTarget.toFixed(1)} 格。`}</span><button onClick={doMove} disabled={!selectedCardValid}>確定行動 →</button></div></div>}
-        <div className="play-row"><span>{!isMyTurn?'等待 '+(G?.players?.[Number(currentID)]?.name||'玩家')+' 出牌':picked===null?'選一張牌，再點地板人頭或下方圖案':selectedHeads.length<targetCount?'選目標後走近圖騰':nearTarget?'已接近目標，可以確定行動':'火柴人正在走向目標；也可用 WASD 行走'}</span><button className="play-button" disabled={!isMyTurn||picked===null||!selectedCardValid} onClick={doMove}>確定行動 →</button></div>
+        <div className="hand-header"><span><b>你的手牌</b> <small>{me?.hand?.length||0} 張</small></span><small>站立位置決定操作人頭</small></div>
+        <div className="card-fan">{me?.hand?.map((card,index)=><button className={`action-card ${picked===index?'picked':''}`} key={`${card}-${index}`} style={{'--tilt':`${(index-(me.hand.length-1)/2)*3}deg`,'--order':index}} onClick={()=>{setPicked(index);setSwapTarget(null);setWalkDestination(null)}} disabled={!isMyTurn||(card==='toast'&&(me?.roundPlays||0)===0)} title={card==='toast'&&(me?.roundPlays||0)===0?'爆破牌不能在你本局第一回合使用':'選取行動牌'}><span className="card-spark">✳</span><b>{card==='topple'?'推倒':card==='toast'?'爆破':card==='swap'?'互換':`上移 ${card.slice(2)}`}</b><i>{card==='topple'?'↓↓':card==='toast'?'✹':card==='swap'?'⇄':`↑${card.slice(2)}`}</i><small>{card==='topple'?'TOPPLE':card==='toast'?'TOAST':card==='swap'?'SWAP':'TIKI UP'}</small></button>)}</div>
+        {isMyTurn&&selectedCard&&<div className="standing-action"><span><b>目前操作：</b>{standingHead?`${TIKIS[standingHead.id].name} · 第 ${standingIndex+1} 位`:'尚未靠近人頭'}　{selectionHint}</span><button onClick={()=>{setPicked(null);setSwapTarget(null);setWalkDestination(null)}} aria-label="取消選擇">×</button></div>}
+        {isMyTurn&&selectedCard==='swap'&&standingHead&&<div className="head-picker inline-picker" role="group" aria-label="選擇互換的第二張人頭"><div className="head-picker-header"><div><b>選擇互換的第二張人頭</b><small>第一張固定是你目前站立位置旁的人頭。</small></div></div><div className="head-picker-grid">{active.map((tiki,index)=>{const portrait=TIKIS[tiki.id],selected=swapTarget===tiki.id,disabled=tiki.id===standingHead.id;return <button key={tiki.id} className={`head-choice ${selected?'selected':''}`} disabled={disabled} onClick={()=>setSwapTarget(tiki.id)} title={`${portrait.name}，第 ${index+1} 位`}><TikiPortrait tiki={portrait} size={52}/><span>{portrait.name}</span><small>第 {index+1} 位</small>{selected&&<i>2</i>}</button>})}</div></div>}
+        <div className="play-row"><span>{!isMyTurn?'等待 '+(G?.players?.[Number(currentID)]?.name||'玩家')+' 出牌':picked===null?'先靠近人頭，再選一張手牌':!standingHead?'請走到要操作的人頭旁':!targetAllowed?selectionHint:selectedCard==='swap'&&!selectedCardValid?'請選第二張人頭；第一張依站立位置決定':'已可行動；若被推擠，操作人頭會跟著改變'}</span><button className="play-button" disabled={!isMyTurn||picked===null||!selectedCardValid} onClick={doMove}>確定行動 →</button></div>
       </div>}
       {['roundEnd','gameEnd'].includes(G?.phase)&&<div className="round-end"><div className="winner-mark">✦</div><div><b>{G.phase==='gameEnd'?(G.gameWinner===null?'人數不足，這間島嶼已散場':`${G.players[G.gameWinner]?.name} 贏得整場！`):'本局結算完成'}</b><p>{sortedPlayers.map(p=>`${p.name} +${p.roundScore}分（累計 ${p.total}）`).join('　·　')}</p></div>{G.phase==='gameEnd'?<button onClick={leaveRoom}>回到首頁</button>:me?.continue!==null?<span className="host-note">已選擇留下，等待其他玩家…</span>:<><button onClick={()=>client.moves.ContinueNext(true)}>留下來再玩 →</button><button className="text-button" onClick={()=>{client.moves.ContinueNext(false);setTimeout(leaveRoom,220)}}>離開回首頁</button></>}</div>}
     </section>
-    <aside className="side-column">{rulesOpen&&<div className="scoring-card"><div><b>計分規則</b><span>祕密圖騰結算</span></div><div className="scoring-points"><span>🥇 第一名　9 分</span><span>🥈 前二名　5 分</span><span>🥉 前三名　2 分</span></div><div className="target-score">整場目標 <b>{G?.targetScore||30} 分</b></div></div>}
-      <div className="chat-card"><div className="panel-heading"><b>島上聊天室</b><span className="live-dot">即時</span></div><div className="chat-messages" ref={chatRef}>{messages.map((m,i)=><div className={`chat-msg ${m.kind}`} key={i}>{m.kind==='emote'?<div className="emote-bubble"><b>{m.emoji}</b><span>{m.name}　{m.phrase}</span></div>:m.kind==='system'?<span className="system-msg">{m.text}</span>:<><b>{m.name}</b><span>{m.text}</span></>}</div>)}</div><div className="quick-bar">{QUICK.map(item=><button key={item.emoji} title={item.phrase} onClick={()=>quickSend(item)}>{item.emoji}</button>)}</div><form className="chat-form" onSubmit={sendChat}><input value={chatText} maxLength={240} onChange={e=>setChatText(e.target.value)} placeholder="傳個訊息給大家…"/><button>↑</button></form></div>
+    <aside className="side-column">
+      <div className="chat-card"><div className="panel-heading"><b>島上聊天室</b><span className="live-dot">即時</span></div><div className="chat-messages" ref={chatRef}>{messages.map((m,i)=><div className={`chat-msg ${m.kind}`} key={i}>{m.kind==='emote'?<div className="emote-bubble"><b>{m.emoji}</b><span>{m.name}　{m.phrase}</span></div>:m.kind==='system'?<span className="system-msg">{m.text}</span>:<><b>{m.name}</b><span>{m.text}</span></>}</div>)}</div><form className="chat-form" onSubmit={sendChat}><input value={chatText} maxLength={240} onChange={e=>setChatText(e.target.value)} placeholder="傳個訊息給大家…"/><button>↑</button></form></div>
     </aside></div>
   </main>;
 }
