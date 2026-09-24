@@ -1,4 +1,5 @@
-export const ACTION_RADIUS = 1.45;
+export const ACTION_RADIUS = 2.05;
+export const PUSH_RADIUS = 1.3;
 export const WALK_STEP = 0.34;
 export const START_POSITIONS = [
   { x: -3.4, z: 3.5 },
@@ -26,4 +27,3 @@ export function clampPlayerPosition(position) {
 export function distance2D(a, b) {
   return Math.hypot(a.x - b.x, a.z - b.z);
 }
-
