@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { TIKIS } from './game.js';
-import { ACTION_RADIUS, START_POSITIONS, distance2D, tilePosition } from './layout.js';
+import { START_POSITIONS, nearestTikiIndex, tilePosition } from './layout.js';
 import { tikiImageUrl } from './tikiArt.js';
 
 const PLAYER_COLORS = { coral:'#ed7965', jade:'#5db89b', sun:'#edbd58', lavender:'#9b8ad7' };
@@ -22,20 +22,25 @@ function textSprite(text, width=512, height=128, bubble=false) {
     context.fillStyle='#f36f5e';context.fillText(`|${rank[2]}`,width*.84,height/2,width*.24);
   }else context.fillText(display,width/2,height/2,width-35);
   const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
-  const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,opacity:.75,depthTest:false}));
+  const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,opacity:bubble?.75:.60,depthTest:false}));
   sprite.scale.set(bubble?2.3:1.9,bubble?.57:.47,1);
   sprite.renderOrder=20;
   return sprite;
 }
 
-function scoreTexture(name,total,color) {
-  const canvas=document.createElement('canvas');canvas.width=512;canvas.height=256;
+function scoreTexture(players) {
+  const canvas=document.createElement('canvas');canvas.width=1024;canvas.height=232;
   const context=canvas.getContext('2d');
-  context.fillStyle='#17382d';context.beginPath();context.roundRect(9,9,494,238,24);context.fill();
-  context.strokeStyle=color;context.lineWidth=12;context.stroke();
-  context.fillStyle='#f7e9c3';context.textAlign='center';
-  context.font='bold 45px sans-serif';context.fillText(String(name).slice(0,20),256,93,455);
-  context.font='bold 80px sans-serif';context.fillText(`${total} 分`,256,195,455);
+  context.fillStyle='#17382d';context.beginPath();context.roundRect(5,5,1014,222,22);context.fill();
+  players.forEach((player,index)=>{
+    const x=index*256;
+    context.fillStyle=PLAYER_COLORS[player?.color]||Object.values(PLAYER_COLORS)[index];
+    context.fillRect(x+8,8,240,18);
+    if(index){context.strokeStyle='#8fa68a';context.lineWidth=3;context.beginPath();context.moveTo(x,38);context.lineTo(x,210);context.stroke()}
+    context.fillStyle='#f7e9c3';context.textAlign='center';
+    context.font='bold 34px sans-serif';context.fillText(player?.joined?String(player.name).slice(0,20):'等待玩家',x+128,90,225);
+    context.font='bold 75px sans-serif';context.fillText(player?.joined?`${player.total||0} 分`:'—',x+128,177,230);
+  });
   const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;return texture;
 }
 
@@ -164,13 +169,11 @@ export default function TikiScene({board=[],players=[],myPlayerID,decorative=fal
       avatar.userData.id=id;
       avatarRoot.add(avatar);avatars.set(id,avatar);
     }
-    const scoreBoards=START_POSITIONS.map((_,id)=>{
-      const texture=scoreTexture(`玩家 ${id+1}`,0,Object.values(PLAYER_COLORS)[id]);
-      const panel=new THREE.Mesh(new THREE.PlaneGeometry(2.4,1.2),new THREE.MeshBasicMaterial({map:texture,transparent:true,side:THREE.DoubleSide}));
-      panel.rotation.x=-Math.PI/2;
-      panel.position.set(id===0||id===3?-5.2:5.2,.015,id<2?4.8:-4.8);
-      scene.add(panel);return {panel,key:''};
-    });
+    const scorePanel=new THREE.Mesh(new THREE.PlaneGeometry(3.65,.85),new THREE.MeshBasicMaterial({map:scoreTexture([]),transparent:true,side:THREE.DoubleSide}));
+    scorePanel.rotation.x=-Math.PI/2;
+    scorePanel.position.set(3.05,FLOOR_Y+.014,0);
+    scene.add(scorePanel);
+    let scoreKey='';
     const effects=new THREE.Group();scene.add(effects);
     const bursts=[];
     const smoke=[];
@@ -229,7 +232,7 @@ export default function TikiScene({board=[],players=[],myPlayerID,decorative=fal
         if(person?.joined){
           avatar.userData.suit.color.set(PLAYER_COLORS[person.color]||Object.values(PLAYER_COLORS)[id]);
           if(!decorative){
-            const nearby=live.findIndex((tiki,index)=>distance2D(person.position||START_POSITIONS[id],tilePosition(index,live.length))<=ACTION_RADIUS);
+            const nearby=nearestTikiIndex(person.position||START_POSITIONS[id],live);
             const nameText=`${person.name||`玩家 ${id+1}`}${nearby>=0?`  |${nearby+1}`:''}`;
             if(avatar.userData.labelKey!==nameText){
               if(avatar.userData.label){avatar.remove(avatar.userData.label);avatar.userData.label.material.map.dispose();avatar.userData.label.material.dispose()}
@@ -244,14 +247,15 @@ export default function TikiScene({board=[],players=[],myPlayerID,decorative=fal
             }
           }
         }
-        const scoreKey=`${person?.name||`玩家 ${id+1}`}:${person?.total||0}:${person?.color||id}`;
-        if(scoreBoards[id].key!==scoreKey){
-          const panel=scoreBoards[id].panel;panel.material.map.dispose();
-          panel.material.map=scoreTexture(person?.name||`玩家 ${id+1}`,person?.total||0,PLAYER_COLORS[person?.color]||Object.values(PLAYER_COLORS)[id]);
-          panel.material.needsUpdate=true;scoreBoards[id].key=scoreKey;
-        }
-        scoreBoards[id].panel.visible=!decorative&&Boolean(person?.joined);
       });
+      const nextScoreKey=people.map((person,id)=>`${id}:${person?.joined}:${person?.name}:${person?.total}:${person?.color}`).join('|');
+      if(nextScoreKey!==scoreKey){
+        scorePanel.material.map.dispose();
+        scorePanel.material.map=scoreTexture(people);
+        scorePanel.material.needsUpdate=true;
+        scoreKey=nextScoreKey;
+      }
+      scorePanel.visible=!decorative&&people.some(person=>person?.joined);
       return people;
     };
 
