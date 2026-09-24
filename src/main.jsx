@@ -215,7 +215,7 @@ function TikiScene({board=[],decorative=false,lastMove,interactive=false,secret=
       while(idolRoot.children.length){const old=idolRoot.children[0];old.traverse(object=>{if(object.isMesh){object.geometry.dispose();if(Array.isArray(object.material))object.material.forEach(material=>material.dispose());else object.material.dispose()}});idolRoot.remove(old)} activeRef.current=[];
       const stackStep=1.52, baseY=.28, scale=decorative?.64:.64;
       live.forEach((t,index)=>{const rank=index<3?index:-1,idol=makeTiki(t.color||TIKIS[t.id]?.color||'#bd9060',scale);const level=live.length-1-index;const target=new THREE.Vector3(level%2===0?.06:-.06,baseY+level*stackStep,0);const start=oldPositions.get(t.id)?.clone()||target.clone();idol.position.copy(start);const baseRotation=level%2?Math.PI+.14:-.14;idol.rotation.y=baseRotation;idol.userData={id:t.id,start,target,moveStart:performance.now(),baseRotation,topple:data.lastMove?.type==='topple'&&data.lastMove.tikiId===t.id};
-        if(rank>=0){const scoreColor=['#ffd45f','#e6edf0','#d99562'][rank],badge=new THREE.Mesh(new THREE.TorusGeometry(.19,.035,7,24),new THREE.MeshStandardMaterial({color:scoreColor,emissive:scoreColor,emissiveIntensity:.35,roughness:.35}));badge.position.set(0,1.62,.48);idol.add(badge)}
+        if(rank>=0){const scoreColor=['#ffd45f','#e6edf0','#d99562'][rank],badge=new THREE.Mesh(new THREE.TorusGeometry(.44,.05,8,28),new THREE.MeshStandardMaterial({color:scoreColor,emissive:scoreColor,emissiveIntensity:.42,roughness:.32}));badge.rotation.x=Math.PI/2;badge.position.y=1.25;idol.add(badge)}
         idolRoot.add(idol);activeRef.current.push(idol)});
       current.lookAtY=baseY+Math.max(0,live.length-1)*stackStep/2+.9;
     };
