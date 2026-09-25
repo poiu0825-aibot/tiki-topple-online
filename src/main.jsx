@@ -46,7 +46,7 @@ function App() {
   const lastSpeechAt = useRef(0);
 
   useEffect(() => { const linkRoom = new URLSearchParams(location.search).get('room'); if (linkRoom) { setRoomInput(linkRoom); setAutoJoin(linkRoom); setModal('join'); } }, []);
-  useEffect(() => { if (autoJoin && modal === 'join' && name.trim().length) { const code=autoJoin;setAutoJoin('');const saved=localStorage.getItem(`tiki-session:${code}`);if(saved){try{enterGame(JSON.parse(saved));return}catch{localStorage.removeItem(`tiki-session:${code}`)}}joinRoom(code); } }, [name, modal, autoJoin]);
+  useEffect(() => { if (autoJoin && modal === 'join') { const code=autoJoin;setAutoJoin('');const saved=localStorage.getItem(`tiki-session:${code}`);if(saved){try{enterGame(JSON.parse(saved));return}catch{localStorage.removeItem(`tiki-session:${code}`)}} } }, [modal, autoJoin]);
   useEffect(() => { chatRef.current?.scrollTo(0, chatRef.current.scrollHeight); }, [messages]);
 
   async function lobbyRequest(path, payload) {
@@ -143,10 +143,13 @@ function GameRoom({G,ctx,player,room,name,isMyTurn,client,messages,chatRef,chatT
   const [shootMode,setShootMode]=useState(false);
   const [flashTikiId,setFlashTikiId]=useState(null);
   const [flashToken,setFlashToken]=useState(0);
+  const [lobbySeats,setLobbySeats]=useState(null);
+  const [startError,setStartError]=useState('');
   const liveGame=useRef(G);
   liveGame.current=G;
   const isHost=player?.host||String(G?.hostID)===String(player?.playerID);
   const me=G?.players?.[Number(player?.playerID)];
+  useEffect(()=>{if(G?.phase!=='lobby'||!room?.matchID)return;let cancelled=false;const refresh=async()=>{try{const response=await fetch(`${API}/games/${GAME_NAME}/${encodeURIComponent(room.matchID)}`);if(!response.ok)throw new Error('無法讀取房間連線狀態');const data=await response.json();if(!cancelled)setLobbySeats(data.players||[])}catch{if(!cancelled)setLobbySeats(null)}};refresh();const timer=setInterval(refresh,2000);return()=>{cancelled=true;clearInterval(timer)}},[G?.phase,room?.matchID]);
   useEffect(()=>{ if(!G||!me||!client)return; if(['lobby','roundEnd'].includes(G.phase)) client.moves.SetProfile({name, color:me.preferredColor}); },[name,me?.preferredColor,G?.phase]);
   useEffect(()=>{if(!turnHint)return;const timer=setTimeout(()=>setTurnHint(false),2200);return()=>clearTimeout(timer)},[turnHint]);
   useEffect(()=>{if(G?.lastPush&&String(G.lastPush.targetID)===String(player?.playerID))setWalkDestination(null)},[G?.lastPush?.stamp,player?.playerID]);
@@ -185,11 +188,13 @@ function GameRoom({G,ctx,player,room,name,isMyTurn,client,messages,chatRef,chatT
   },[walkDestination,me?.position?.x,me?.position?.z,G?.phase,G?.players?.[Number(walkDestination?.playerID)]?.position?.x,G?.players?.[Number(walkDestination?.playerID)]?.position?.z,active.map(t=>t.id).join(','),client]);
   const doMove=()=>{if(picked===null||!isMyTurn||!selectedCardValid)return;client.moves.PlayCard(picked,swapTarget);setPicked(null);setSwapTarget(null);setWalkDestination(null)};
   const sortedPlayers=G?.players?.map((p,i)=>({...p,id:String(i)})).filter(p=>p.joined)||[];
+  const disconnectedPlayers=sortedPlayers.filter(p=>!lobbySeats?.some(seat=>String(seat.id)===p.id&&seat.isConnected));
+  const canStart=sortedPlayers.length>=2&&lobbySeats!==null&&disconnectedPlayers.length===0;
   const canAttack=G?.phase==='playing'&&clockNow-(me?.lastAttackAt||0)>=2000;
   const shootTargets=sortedPlayers.filter(p=>p.id!==String(player?.playerID)&&Number.isInteger(p.ladderRank));
   const shoot=(id)=>{if(canAttack){client?.moves.ShootPlayer(id);setShootMode(false)}};
   const secondsLeft=SHRINE_MODE&&G?.phase==='playing'&&G?.turnEndsAt?Math.min(30,Math.max(0,Math.ceil((G.turnEndsAt-clockNow)/1000))):null;
-  const start=()=>client.moves.StartGame(G.targetScore);
+  const start=async()=>{setStartError('');try{const response=await fetch(`${API}/games/${GAME_NAME}/${encodeURIComponent(room.matchID)}`);if(!response.ok)throw new Error('無法確認玩家連線');const data=await response.json();const missing=sortedPlayers.filter(p=>!data.players?.some(seat=>String(seat.id)===p.id&&seat.isConnected));if(missing.length){setLobbySeats(data.players||[]);setStartError(`請等待 ${missing.map(p=>p.name).join('、')} 重新連線後再開始。`);return}client.moves.StartGame(G.targetScore)}catch{setStartError('無法確認玩家連線，請稍後再試。')}};
   const copy=async()=>{await navigator.clipboard?.writeText(link);setCopied(true);setTimeout(()=>setCopied(false),1300)};
   const liveScore=me?.secret?.reduce((sum,id,order)=>{const rank=active.findIndex(t=>t.id===id);return sum+(rank>=0&&rank<=order?[9,5,2][order]:0)},0)||0;
   return <main className={`game-screen ${SHRINE_MODE?'shrine-mode':''}`}>
@@ -208,7 +213,7 @@ function GameRoom({G,ctx,player,room,name,isMyTurn,client,messages,chatRef,chatT
          {SHRINE_MODE&&G?.phase==='playing'&&<div className="scene-actions"><div className="attack-buttons"><button className={shootMode?'active':''} disabled={!canAttack||!shootTargets.length} onClick={()=>setShootMode(v=>!v)}>🎯 射擊</button><button disabled={!canAttack||String(currentID)===String(player?.playerID)||!Number.isInteger(G?.players?.[Number(currentID)]?.ladderRank)} onClick={()=>{setShootMode(false);client?.moves.KickStairs()}}>🪜 搖晃</button></div>{shootMode&&<div className="shoot-targets"><small>選擇樓梯上的玩家</small>{shootTargets.map(p=><button key={p.id} onClick={()=>shoot(p.id)}>{p.name} · 第 {p.ladderRank+1} 位</button>)}</div>}</div>}
          {G?.phase==='playing'&&<div className="scene-quick" aria-label="快速對話">{QUICK.map(item=><button key={item.emoji} title={item.phrase} aria-label={item.phrase} onClick={()=>quickSend(item)}>{item.emoji}</button>)}</div>}
        </div>
-       {G?.phase==='lobby'&&<div className="pre-game-panel"><div className="lobby-title"><b>選擇你的顏色</b><small>撞色會在開局前猜拳</small></div><span className="lobby-status">{sortedPlayers.length<2?`等待至少 2 位玩家 · ${sortedPlayers.length}/2`:`已加入 ${sortedPlayers.length} 位`}</span><div className="color-choices">{COLORS.map(c=><button key={c.id} title={c.name} className={me?.preferredColor===c.id?'selected':''} style={{'--swatch':c.hex}} onClick={()=>client.moves.SetProfile({name,color:me?.preferredColor===c.id?null:c.id})}><i/>{me?.preferredColor===c.id&&'✓'}</button>)}</div>{isHost?<button className="start-button" onClick={start} disabled={sortedPlayers.length<2}>開始遊戲 →</button>:<span className="host-note">等待房主…</span>}</div>}
+      {G?.phase==='lobby'&&<div className="pre-game-panel"><div className="lobby-title"><b>選擇你的顏色</b><small>撞色會在開局前猜拳</small></div><span className="lobby-status">{sortedPlayers.length<2?`等待至少 2 位玩家 · ${sortedPlayers.length}/2`:lobbySeats===null?'確認玩家連線中…':disconnectedPlayers.length?`等待 ${disconnectedPlayers.map(p=>p.name).join('、')} 重新連線`:`已連線 ${sortedPlayers.length} 位`}</span><div className="color-choices">{COLORS.map(c=><button key={c.id} title={c.name} className={me?.preferredColor===c.id?'selected':''} style={{'--swatch':c.hex}} onClick={()=>client.moves.SetProfile({name,color:me?.preferredColor===c.id?null:c.id})}><i/>{me?.preferredColor===c.id&&'✓'}</button>)}</div>{isHost?<button className="start-button" onClick={start} disabled={!canStart}>開始遊戲 →</button>:<span className="host-note">等待房主…</span>}{startError&&<span role="alert" className="host-note">{startError}</span>}</div>}
       {G?.phase==='rps'&&<div className="pre-game-panel rps-panel"><div><b>猜拳決定顏色</b><small>選一個手勢；房主完成後開始</small></div><div className="rps-buttons">{[['rock','✊'],['paper','✋'],['scissors','✌️']].map(([key,emoji])=><button className={rps===key?'selected':''} key={key} onClick={()=>{setRps(key);client.moves.PickRps(key)}}>{emoji}</button>)}</div>{isHost&&<button className="start-button" disabled={G.players.some(p=>p.joined&&!p.rps)} onClick={()=>client.moves.ResolveRps()}>揭曉結果 →</button>}</div>}
       {G?.phase==='playing'&&<div className="live-score"><span>本場即時得分</span><b>{liveScore} 分</b><small>若依目前人頭順位結算</small></div>}
       {G?.phase==='playing'&&<div className="hand-zone">
