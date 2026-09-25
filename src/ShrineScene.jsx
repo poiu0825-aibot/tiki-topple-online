@@ -12,7 +12,7 @@ function scoreboardTexture(players, backdrop) {
   const canvas=document.createElement('canvas');canvas.width=768;canvas.height=640;
   const ctx=canvas.getContext('2d');ctx.fillStyle='#263b32';ctx.beginPath();ctx.roundRect(12,12,744,616,30);ctx.fill();
   ctx.strokeStyle='#d8b46e';ctx.lineWidth=14;ctx.stroke();ctx.fillStyle='#f4dfb0';ctx.font='bold 62px sans-serif';ctx.fillText(`總積分 · ${SHRINE_BACKDROPS[backdrop]||SHRINE_BACKDROPS[0]}`,54,94);
-  players.forEach((player,index)=>{const y=171+index*111;ctx.fillStyle=COLORS[index];ctx.fillRect(54,y-43,18,78);ctx.fillStyle='#f5ecd7';ctx.font='bold 45px sans-serif';ctx.fillText(player?.joined?String(player.name).slice(0,14):'等待玩家',94,y+5,430);ctx.textAlign='right';ctx.font='bold 56px sans-serif';ctx.fillText(player?.joined?`${player.total||0}`:'—',702,y+8);ctx.textAlign='left';});
+  players.map((player,index)=>({player,index})).filter(({player})=>player?.joined).forEach(({player,index},row)=>{const y=171+row*111;ctx.fillStyle=COLORS[index];ctx.fillRect(54,y-43,18,78);ctx.fillStyle='#f5ecd7';ctx.font='bold 45px sans-serif';ctx.fillText(String(player.name).slice(0,14),94,y+5,430);ctx.textAlign='right';ctx.font='bold 56px sans-serif';ctx.fillText(`${player.total||0}`,702,y+8);ctx.textAlign='left';});
   const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;return texture;
 }
 

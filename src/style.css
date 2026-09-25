@@ -92,6 +92,8 @@
 @media(max-width:760px){.variant-link{margin-right:8px;padding:6px 8px;font-size:9px}.shrine-controls{right:7px;top:39px}.shrine-controls button{font-size:9px;padding:6px 8px}.shrine-clock{font-size:8px;padding:4px 6px}.game-brand small{display:none}}
 
 .shrine-mode .board-wrap{height:clamp(570px,78vh,900px)}
+.idle-restart-banner{display:flex;align-items:center;justify-content:center;gap:12px;min-height:44px;margin:5px 0;padding:9px 14px;border:1px solid #f3b28a;border-radius:8px;background:#713624;color:#fff0d8;text-align:center;font-size:13px;font-weight:800;line-height:1.4}
+.idle-restart-banner button{padding:5px 10px;border-radius:5px;background:#f1d59d;color:#293a30;font-size:12px;font-weight:800}
 .shrine-mode .scene-secret{width:225px;opacity:.85}
 .shrine-mode .scene-secret-item .tiki-portrait{width:47px;height:47px;object-fit:contain}
 .shrine-mode .scene-secret-item.clickable{cursor:pointer;border-radius:7px;padding:2px;transition:background .15s,transform .15s}
@@ -108,6 +110,7 @@
 @media(max-width:430px){.shrine-mode .board-wrap{height:69vh;min-height:520px}.shrine-mode .scene-secret{width:172px}.shrine-mode .scene-secret-item .tiki-portrait{width:35px;height:35px}.shrine-mode .walk-tip{font-size:7px}}
 @media(max-width:1100px){.shrine-mode .game-layout{display:flex;flex-direction:column;width:calc(100% - 18px);gap:12px}.shrine-mode .side-column{width:100%}.shrine-mode .chat-card{min-height:170px;height:200px}.shrine-mode .round-strip .turn-message{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}}
 @media(max-width:760px){.shrine-mode .round-strip .turn-message{display:none}}
+@media(max-width:760px){.idle-restart-banner{font-size:11px;padding:8px;min-height:40px}}
 .shrine-home{background:radial-gradient(ellipse at 78% 46%,#466b5b 0%,#1b403a 58%,#13342f 100%)}
 .shrine-home .home-art{right:-7vw;top:2vh;width:77vw;height:94vh;min-width:620px;mask-image:linear-gradient(90deg,transparent 0%,#000 18%,#000 96%,transparent 100%);-webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 18%,#000 96%,transparent 100%)}
 .shrine-home .home-content{width:min(620px,53vw)}
