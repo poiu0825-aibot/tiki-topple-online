@@ -6,4 +6,3 @@ export default defineConfig({
   server: { proxy: { '/bgio': { target: 'http://localhost:8000', changeOrigin: true, ws: true } } },
   build: { rollupOptions: { output: { manualChunks: { three: ['three'], boardgame: ['boardgame.io'] } } } }
 });
-

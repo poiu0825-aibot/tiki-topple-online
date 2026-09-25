@@ -69,3 +69,47 @@
 @media(max-width:1000px){.round-rules{gap:5px;font-size:8px;padding:5px 7px}.round-rules .rule-goal{padding-left:5px}}
 @media(max-width:760px){.gamebar{height:44px;padding:0 10px}.game-layout{padding-top:5px}.round-strip{height:34px}.round-strip .turn-message{display:none}.round-rules{margin-left:auto;font-size:8px;gap:4px}.round-rules .rule-goal{display:none}.board-wrap{height:55vh;min-height:360px;max-height:530px}.scene-secret{top:7px}.walk-tip{left:8px;bottom:8px;max-width:45%;font-size:8px}.scene-quick{right:7px;bottom:7px}.scene-quick button{width:30px;height:30px;font-size:16px}.live-score{margin-top:7px;padding:6px 10px}}
 @media(max-width:430px){.round-strip{gap:5px}.round-rules{font-size:7px;padding:4px 5px;gap:3px}.round-pill{font-size:8px;padding:4px 6px}.rules-toggle{font-size:8px}.scene-secret{top:6px}.scene-quick button{width:27px;height:27px;font-size:15px}.walk-tip{max-width:41%;font-size:7px}.live-score>small{font-size:8px}.standing-action{font-size:9px}}
+
+.tower-preview-button{position:absolute;right:12px;top:45px;z-index:5;padding:7px 10px;border:1px solid #f5d898a6;border-radius:18px;background:#12352bcc;color:#f5e6c5;font-size:10px;font-weight:700;box-shadow:0 3px 12px #081d1659;backdrop-filter:blur(4px)}
+.tower-preview-button:hover,.tower-preview-button:focus-visible,.tower-preview-button[aria-pressed="true"]{background:#d8ae65;color:#16382e}
+.tower-blast-button{position:absolute;right:12px;top:81px;z-index:5;padding:7px 10px;border:1px solid #f5ac7da6;border-radius:18px;background:#593423cc;color:#fff1d7;font-size:10px;font-weight:700;box-shadow:0 3px 12px #081d1659;backdrop-filter:blur(4px)}
+.tower-blast-button:hover,.tower-blast-button:focus-visible{background:#df925b;color:#17352b}
+@media(max-width:760px){.tower-preview-button{right:8px;top:39px;padding:6px 8px;font-size:9px}}
+@media(max-width:760px){.tower-blast-button{right:8px;top:71px;padding:6px 8px;font-size:9px}}
+@media(max-width:430px){.tower-preview-button,.tower-blast-button{font-size:8px;max-width:43%}}
+
+/* Local shrine-wall variant: controls stay at the edge of the 3D playfield. */
+.variant-link{margin-left:auto;margin-right:24px;padding:8px 12px;border:1px solid #e2c88777;border-radius:20px;color:#f0d58d;text-decoration:none;font-size:11px;background:#13372b99}
+.variant-link:hover{background:#e5c879;color:#203e31}
+.game-brand small{margin-left:7px;color:#e8c782;font-size:10px;font-weight:500;letter-spacing:0}
+.shrine-clock{padding:6px 10px;border:1px solid #d5bd7c77;border-radius:15px;background:#193c31;color:#f6dc9e;font-size:10px;white-space:nowrap}
+.shrine-clock.urgent{background:#803b2b;color:#fff1df;border-color:#ffab83;animation:shrine-pulse .8s ease-in-out infinite alternate}
+@keyframes shrine-pulse{to{box-shadow:0 0 14px #e48a68a1}}
+.shrine-controls{position:absolute;z-index:5;right:12px;top:47px;display:flex;flex-direction:column;gap:6px}
+.shrine-controls button{padding:7px 10px;border:1px solid #f1d29a99;border-radius:16px;background:#183c31df;color:#ffedc6;font-size:10px;font-weight:700}
+.shrine-controls button:hover:not(:disabled){background:#eac27a;color:#243e30}
+.shrine-scene{background:#1c3630}
+@media(max-width:760px){.variant-link{margin-right:8px;padding:6px 8px;font-size:9px}.shrine-controls{right:7px;top:39px}.shrine-controls button{font-size:9px;padding:6px 8px}.shrine-clock{font-size:8px;padding:4px 6px}.game-brand small{display:none}}
+
+.shrine-mode .board-wrap{height:clamp(570px,78vh,900px)}
+.shrine-mode .scene-secret{width:225px;opacity:.85}
+.shrine-mode .scene-secret-item .tiki-portrait{width:47px;height:47px;object-fit:contain}
+.shrine-mode .scene-secret-item.clickable{cursor:pointer;border-radius:7px;padding:2px;transition:background .15s,transform .15s}
+.shrine-mode .scene-secret-item.clickable:hover,.shrine-mode .scene-secret-item.clickable:focus-visible{background:#f6d77d5c;transform:translateY(-2px);outline:1px solid #f6d77d}
+.scene-actions{position:absolute;right:10px;bottom:55px;z-index:6;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.attack-buttons{display:flex;gap:5px;padding:4px;border:1px solid #e6d5a87a;border-radius:22px;background:#102f28d9;backdrop-filter:blur(4px)}
+.attack-buttons button,.shoot-targets button{padding:7px 11px;border-radius:17px;background:#f8edce2d;color:#fff1d5;font-size:11px;font-weight:700}
+.attack-buttons button:hover:not(:disabled),.attack-buttons button.active,.shoot-targets button:hover{background:#dfba74;color:#213d30}
+.attack-buttons button:disabled{opacity:.45;cursor:not-allowed}
+.shoot-targets{display:flex;flex-direction:column;gap:4px;min-width:140px;padding:7px;border:1px solid #e6d5a89c;border-radius:12px;background:#16372ef0;box-shadow:0 4px 16px #10241b91}
+.shoot-targets small{color:#f1d696;font-size:10px;text-align:center}
+.shrine-mode .walk-tip{bottom:10px;max-width:47%}
+@media(max-width:760px){.shrine-mode .board-wrap{height:72vh;min-height:560px;max-height:760px}.shrine-mode .scene-secret{width:190px}.shrine-mode .scene-secret-item .tiki-portrait{width:40px;height:40px}.scene-actions{right:7px;bottom:49px}.attack-buttons button{padding:6px 8px;font-size:10px}.shrine-mode .walk-tip{max-width:45%;font-size:8px}}
+@media(max-width:430px){.shrine-mode .board-wrap{height:69vh;min-height:520px}.shrine-mode .scene-secret{width:172px}.shrine-mode .scene-secret-item .tiki-portrait{width:35px;height:35px}.shrine-mode .walk-tip{font-size:7px}}
+@media(max-width:1100px){.shrine-mode .game-layout{display:flex;flex-direction:column;width:calc(100% - 18px);gap:12px}.shrine-mode .side-column{width:100%}.shrine-mode .chat-card{min-height:170px;height:200px}.shrine-mode .round-strip .turn-message{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}}
+@media(max-width:760px){.shrine-mode .round-strip .turn-message{display:none}}
+.shrine-home{background:radial-gradient(ellipse at 78% 46%,#466b5b 0%,#1b403a 58%,#13342f 100%)}
+.shrine-home .home-art{right:-7vw;top:2vh;width:77vw;height:94vh;min-width:620px;mask-image:linear-gradient(90deg,transparent 0%,#000 18%,#000 96%,transparent 100%);-webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 18%,#000 96%,transparent 100%)}
+.shrine-home .home-content{width:min(620px,53vw)}
+.shrine-home .home-content:before{content:'';position:absolute;z-index:-1;inset:-30px -45px -35px -45px;background:linear-gradient(90deg,#193d37e8 0%,#193d37bd 61%,transparent);pointer-events:none}
+@media(max-width:760px){.shrine-home .home-art{right:-33vw;top:15vh;width:115vw;height:69vh;min-width:0;opacity:.76}.shrine-home .home-content{width:100%}.shrine-home .home-content:before{inset:30px -20px 8px -24px;background:linear-gradient(90deg,#193d37f3 0%,#193d37b5 67%,transparent)}}

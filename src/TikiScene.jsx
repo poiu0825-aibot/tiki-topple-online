@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { TIKIS } from './game.js';
 import { START_POSITIONS, nearestTikiIndex, tilePosition } from './layout.js';
 import { tikiImageUrl } from './tikiArt.js';
+import { createDarumaTower, TOWER_POSITION } from './darumaTower.js';
 
 const PLAYER_COLORS = { coral:'#ed7965', jade:'#5db89b', sun:'#edbd58', lavender:'#9b8ad7' };
 const FLOOR_Y = .32;
@@ -88,10 +89,10 @@ function stickman(color) {
   return group;
 }
 
-export default function TikiScene({board=[],players=[],myPlayerID,decorative=false,lastMove,lastPush,messages=[],interactive=false,selectedHead,onTikiClick,onPlayerClick,onWalk,onGroundClick,canWalk=false}) {
+export default function TikiScene({board=[],players=[],myPlayerID,decorative=false,lastMove,lastPush,messages=[],interactive=false,selectedHead,onTikiClick,onPlayerClick,onWalk,onGroundClick,canWalk=false,towerFocus=false,previewBlastToken=0}) {
   const mount = useRef(null);
-  const latest = useRef({board,players,myPlayerID,lastMove,lastPush,messages,selectedHead,onTikiClick,onPlayerClick,onWalk,onGroundClick,canWalk});
-  latest.current={board,players,myPlayerID,lastMove,lastPush,messages,selectedHead,onTikiClick,onPlayerClick,onWalk,onGroundClick,canWalk};
+  const latest = useRef({board,players,myPlayerID,lastMove,lastPush,messages,selectedHead,onTikiClick,onPlayerClick,onWalk,onGroundClick,canWalk,towerFocus,previewBlastToken});
+  latest.current={board,players,myPlayerID,lastMove,lastPush,messages,selectedHead,onTikiClick,onPlayerClick,onWalk,onGroundClick,canWalk,towerFocus,previewBlastToken};
 
   useEffect(()=>{
     const node=mount.current;
@@ -173,6 +174,7 @@ export default function TikiScene({board=[],players=[],myPlayerID,decorative=fal
     scorePanel.rotation.x=-Math.PI/2;
     scorePanel.position.set(3.05,FLOOR_Y+.014,0);
     scene.add(scorePanel);
+    const tower=decorative?null:createDarumaTower(scene);
     let scoreKey='';
     const effects=new THREE.Group();scene.add(effects);
     const bursts=[];
@@ -199,7 +201,7 @@ export default function TikiScene({board=[],players=[],myPlayerID,decorative=fal
       }
     };
 
-    let boardSignature='',toastStamp=null,pushStamp=null;
+    let boardSignature='',toastStamp=null,pushStamp=null,demoStamp=0;
     const sync=()=>{
       const data=latest.current;
       const live=(decorative&&data.board.length===0?TIKIS.map((tiki,id)=>({...tiki,id,active:true})):data.board).filter(tiki=>tiki.active);
@@ -218,6 +220,8 @@ export default function TikiScene({board=[],players=[],myPlayerID,decorative=fal
           if(!tile.userData.initialized){tile.position.copy(tile.userData.target);tile.userData.initialized=true}
         });
       }
+      tower?.sync(live,data.lastMove);
+      if(data.previewBlastToken&&data.previewBlastToken!==demoStamp&&tower?.previewBlast())demoStamp=data.previewBlastToken;
       tiles.forEach(tile=>{tile.userData.highlight.material.opacity=tile.visible&&tile.userData.id===data.selectedHead?.32:0});
       if(data.lastMove?.type==='toast'&&data.lastMove.stamp!==toastStamp){toastStamp=data.lastMove.stamp;makeBurst(data.lastMove)}
       if(data.lastPush&&data.lastPush.stamp!==pushStamp){
@@ -259,7 +263,7 @@ export default function TikiScene({board=[],players=[],myPlayerID,decorative=fal
       return people;
     };
 
-    let down=null,theta=.28,targetTheta=.28,radius=decorative?11.5:8.2,elevation=decorative?10.5:8.2;
+    let down=null,theta=.28,targetTheta=.28,radius=decorative?11.5:8.2,elevation=decorative?10.5:8.2,focusBlend=0;
     const pointers=new Map();
     renderer.domElement.style.touchAction='none';
     const mouseRay=(event)=>{
@@ -330,9 +334,12 @@ export default function TikiScene({board=[],players=[],myPlayerID,decorative=fal
       const people=sync();
       if(decorative)targetTheta+=.0007;
       theta+=(targetTheta-theta)*.1;
-      camera.position.set(Math.sin(theta)*radius,elevation,Math.cos(theta)*radius);
-      camera.lookAt(0,.4,0);
+      focusBlend+=(Number(Boolean(latest.current.towerFocus))-focusBlend)*.075;
+      const focusX=TOWER_POSITION.x*focusBlend,focusZ=TOWER_POSITION.z*focusBlend,viewRadius=THREE.MathUtils.lerp(radius,7.8,focusBlend);
+      camera.position.set(focusX+Math.sin(theta)*viewRadius,THREE.MathUtils.lerp(elevation,7.3,focusBlend),focusZ+Math.cos(theta)*viewRadius);
+      camera.lookAt(focusX,THREE.MathUtils.lerp(.4,3.2,focusBlend),focusZ);
       const now=performance.now();
+      tower?.tick(now);
       tiles.forEach(tile=>{
         if(!tile.visible)return;
         const fraction=Math.min(1,(now-tile.userData.moveStart)/550);
@@ -384,6 +391,7 @@ export default function TikiScene({board=[],players=[],myPlayerID,decorative=fal
     };
     render();
     return()=>{
+      tower?.dispose();
       cancelAnimationFrame(animationFrame);clearInterval(walking);observer.disconnect();
       window.removeEventListener('keydown',keyDown);window.removeEventListener('keyup',keyUp);window.removeEventListener('blur',blur);
       renderer.domElement.removeEventListener('pointerdown',pointerDown);renderer.domElement.removeEventListener('pointermove',pointerMove);renderer.domElement.removeEventListener('pointerup',pointerUp);renderer.domElement.removeEventListener('wheel',wheel);
@@ -392,5 +400,5 @@ export default function TikiScene({board=[],players=[],myPlayerID,decorative=fal
       renderer.dispose();node.removeChild(renderer.domElement);
     };
   },[decorative]);
-  return <div className={`three-scene ${decorative?'decorative':''} ${interactive?'interactive':''}`} ref={mount} aria-label="可行走與旋轉視角的平面提基圖騰場景"/>;
+  return <div className={`three-scene ${decorative?'decorative':''} ${interactive?'interactive':''}`} ref={mount} aria-label="可行走並比較平面圖騰與立體不倒翁塔的場景"/>;
 }

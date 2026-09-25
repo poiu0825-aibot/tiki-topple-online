@@ -2,4 +2,10 @@ node_modules/
 dist/
 .env.local
 .DS_Store
-
+versions/
+assets/reference/
+preview-server.pid
+preview-server.*.log
+preview-server.log
+*.blend1
+*.blend2

@@ -4,13 +4,14 @@ import { createRequire } from 'node:module';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { extname, resolve, sep } from 'node:path';
 import { TikiTopple } from '../src/game.js';
+import { TikiToppleShrine } from '../src/shrineGame.js';
 
 const require = createRequire(import.meta.url);
 const { Server: BoardServer, Origins } = require('boardgame.io/server');
 
 const production = process.env.NODE_ENV === 'production';
 const publicOrigin = process.env.GAME_ORIGIN || process.env.RENDER_EXTERNAL_URL;
-const board = BoardServer({ games: [TikiTopple], origins: [Origins.LOCALHOST, 'http://localhost:5173', 'http://127.0.0.1:5173', publicOrigin].filter(Boolean) });
+const board = BoardServer({ games: [TikiTopple, TikiToppleShrine], origins: [Origins.LOCALHOST, 'http://localhost:5173', 'http://127.0.0.1:5173', publicOrigin].filter(Boolean) });
 
 if (production) {
   const distDir = resolve(process.cwd(), 'dist');
@@ -33,18 +34,28 @@ const chatOptions = { cors: { origin: publicOrigin || true, methods: ['GET', 'PO
 const io = production
   ? new SocketServer(servers.appServer, { ...chatOptions, path: '/chat/socket.io' })
   : new SocketServer(createServer(), chatOptions);
+const lastSaid = new Map();
+const shrineRooms = new Set();
+function canSpeak(room, playerID) {
+  const key = `${room}:${String(playerID ?? '')}`;
+  const now = Date.now();
+  if (now - (lastSaid.get(key) || 0) < 2000) return false;
+  lastSaid.set(key, now);
+  return true;
+}
 io.on('connection', socket => {
-  socket.on('room:join', ({ room, name }) => {
+  socket.on('room:join', ({ room, name, variant }) => {
     if (!room) return;
+    if (variant === 'shrine') shrineRooms.add(String(room));
     socket.join(`room:${room}`);
     socket.to(`room:${room}`).emit('chat:system', { text: `${name || '玩家'} 加入聊天室`, at: Date.now() });
   });
   socket.on('chat:message', ({ room, playerID, name, text }) => {
-    if (!room || !text?.trim()) return;
+    if (!room || !text?.trim() || (shrineRooms.has(String(room)) && !canSpeak(room, playerID))) return;
     io.to(`room:${room}`).emit('chat:message', { playerID:String(playerID ?? ''), name: String(name || '玩家').slice(0, 20), text: String(text).slice(0, 240), at: Date.now() });
   });
   socket.on('chat:emote', ({ room, playerID, name, emoji, phrase }) => {
-    if (!room) return;
+    if (!room || (shrineRooms.has(String(room)) && !canSpeak(room, playerID))) return;
     io.to(`room:${room}`).emit('chat:emote', { playerID:String(playerID ?? ''), name: String(name || '玩家').slice(0, 20), emoji, phrase, at: Date.now() });
   });
 });

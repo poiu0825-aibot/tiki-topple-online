@@ -39,4 +39,3 @@ export function tikiSvg(tiki) {
 export function tikiImageUrl(tiki) {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(tikiSvg(tiki))}`;
 }
-
