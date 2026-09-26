@@ -26,7 +26,7 @@ export const TikiTopple = {
   setup: ({ ctx, random }, setupData) => ({
     targetScore: Math.max(1, Math.min(60, Number(setupData?.targetScore) || 30)),
     hostID: '0', round: 1, phase: 'lobby',
-    players: Array.from({ length: ctx.numPlayers }, (_, i) => ({ name: `玩家 ${i + 1}`, joined: false, profileReady: false, avatarTikiId: null, color: null, preferredColor: null, hand: [], secret: [], total: 0, roundScore: 0, roundPlays: 0, rps: null, emoji: null, continue: null, position: { ...START_POSITIONS[i] } })),
+    players: Array.from({ length: ctx.numPlayers }, (_, i) => ({ name: `玩家 ${i + 1}`, joined: false, profileReady: false, avatarTikiId: null, color: null, hand: [], secret: [], total: 0, roundScore: 0, roundPlays: 0, emoji: null, continue: null, position: { ...START_POSITIONS[i] } })),
     board: shuffled(TIKIS.map((tiki, id) => ({ id, ...tiki, active: true })), random),
     played: [], removed: [], lastMove: null, lastPush: null, pushCount: 0, roundStarter: 0, roundTurn: 0, roundEndAt: null, gameWinner: null,
   }),
@@ -45,17 +45,11 @@ export const TikiTopple = {
     },
     stages: {
       lobby: { moves: {
-        SetProfile: ({ G, playerID }, profile) => { const p = G.players[playerIndex(playerID)]; if (!p || G.phase !== 'lobby') return; p.joined = true; p.name = String(profile.name || p.name).trim().slice(0, 20) || p.name; p.preferredColor = profile.color || null; p.color = profile.color || null; if (Number.isInteger(profile.avatarTikiId) && profile.avatarTikiId >= 0 && profile.avatarTikiId < 9) p.avatarTikiId = profile.avatarTikiId; if (profile.ready !== undefined) p.profileReady = Boolean(profile.ready); },
+        SetProfile: ({ G, playerID, random }, profile) => { const p = G.players[playerIndex(playerID)]; if (!p || G.phase !== 'lobby') return; p.joined = true; p.name = String(profile.name || p.name).trim().slice(0, 20) || p.name; if (!p.color) { const palette = ['coral', 'jade', 'sun', 'lavender']; const used = new Set(G.players.filter(other => other !== p && other.joined).map(other => other.color)); const available = palette.filter(color => !used.has(color)); p.color = available[Math.floor(random.Number() * available.length)]; } if (Number.isInteger(profile.avatarTikiId) && profile.avatarTikiId >= 0 && profile.avatarTikiId < 9) p.avatarTikiId = profile.avatarTikiId; else if (!Number.isInteger(p.avatarTikiId)) p.avatarTikiId = Math.floor(random.Number() * 9); if (profile.ready !== undefined) p.profileReady = Boolean(profile.ready); },
         UpdateIdentity: (...args) => TikiTopple.moves.UpdateIdentity(...args),
         StartGame: (...args) => TikiTopple.moves.StartGame(...args),
         ContinueNext: (...args) => TikiTopple.moves.ContinueNext(...args),
         AdvanceRound: (...args) => TikiTopple.moves.AdvanceRound(...args),
-        LeaveGame: (...args) => TikiTopple.moves.LeaveGame(...args),
-      } },
-      rps: { moves: {
-        PickRps: ({ G, playerID }, hand) => { const p = G.players[playerIndex(playerID)]; if (p && ['rock', 'paper', 'scissors'].includes(hand)) p.rps = hand; },
-        UpdateIdentity: (...args) => TikiTopple.moves.UpdateIdentity(...args),
-        ResolveRps: (...args) => TikiTopple.moves.ResolveRps(...args),
         LeaveGame: (...args) => TikiTopple.moves.LeaveGame(...args),
       } },
       play: { moves: {
@@ -90,7 +84,7 @@ export const TikiTopple = {
           const card = p.hand[cardIndex];
           if (!card) return;
           const active = G.board.filter(t => t.active);
-          const index = nearestTikiIndex(p.position || START_POSITIONS[playerIndex(playerID)], active);
+          const index = card === 'toast' ? active.length - 1 : nearestTikiIndex(p.position || START_POSITIONS[playerIndex(playerID)], active);
           if (index < 0) return;
           const tikiId = active[index].id;
           if (card === 'toast' && p.roundPlays === 0) return;
@@ -113,7 +107,7 @@ export const TikiTopple = {
             G.lastMove = { type: 'swap', tikiId, secondTikiId, by: playerID, stamp: `${G.round}:${G.roundTurn}` };
           } else {
             const bottom = active.at(-1);
-            if (!bottom || bottom.id !== tikiId) return;
+            if (!bottom) return;
             const blastAt = tilePosition(index, active.length);
             const blastPlayers = [];
             G.players.forEach((person, personIndex) => {
@@ -138,42 +132,31 @@ export const TikiTopple = {
       } },
     },
     onBegin: ({ G, events }) => {
-      const stage = G.phase === 'playing' ? 'play' : G.phase === 'rps' ? 'rps' : 'lobby';
+      const stage = G.phase === 'playing' ? 'play' : 'lobby';
       events.setActivePlayers({ all: stage });
     },
   },
   moves: {
-    UpdateIdentity: ({ G, playerID }, profile) => {
+    UpdateIdentity: ({ G, playerID, random }, profile) => {
       const p = G.players[playerIndex(playerID)]; if (!p?.joined) return;
       const requested = String(profile?.name || '').trim().slice(0, 20);
       if (requested) p.name = requested;
       if (Number.isInteger(profile?.avatarTikiId) && profile.avatarTikiId >= 0 && profile.avatarTikiId < 9) p.avatarTikiId = profile.avatarTikiId;
+      else if (!Number.isInteger(p.avatarTikiId)) p.avatarTikiId = Math.floor(random.Number() * 9);
     },
     StartGame: ({ G, playerID, ctx, random, events }, scoreGoal) => {
       if (playerID !== G.hostID || G.phase !== 'lobby' || G.players.filter(p => p.joined).length < 2 || G.players.some(p => p.joined && !p.profileReady)) return;
       G.targetScore = Math.max(1, Math.min(60, Number(scoreGoal) || G.targetScore));
       const palette = ['coral', 'jade', 'sun', 'lavender'];
-      const chosen = G.players.map(p => p.preferredColor).filter(Boolean);
-      G.players.filter(p => p.joined && !p.preferredColor).forEach(p => {
-        const available = palette.filter(color => !chosen.includes(color) && !G.players.some(other => other !== p && other.color === color));
-        p.color = available[0] || palette.find(color => !G.players.some(other => other !== p && other.color === color)) || palette[0];
+      const used = new Set();
+      G.players.filter(p => p.joined).forEach(p => {
+        if (!palette.includes(p.color) || used.has(p.color)) {
+          const available = palette.filter(color => !used.has(color));
+          p.color = available[Math.floor(random.Number() * available.length)];
+        }
+        used.add(p.color);
+        if (!Number.isInteger(p.avatarTikiId) || p.avatarTikiId < 0 || p.avatarTikiId >= 9) p.avatarTikiId = Math.floor(random.Number() * 9);
       });
-      const duplicates = chosen.filter((c, i) => chosen.indexOf(c) !== i);
-      if (duplicates.length) { G.phase = 'rps'; events.setActivePlayers({ all: 'rps' }); return; }
-      beginRound(G, ctx, random, events, true);
-    },
-    ResolveRps: ({ G, playerID, ctx, random, events }) => {
-      if (playerID !== G.hostID || G.phase !== 'rps' || G.players.some(p => p.joined && !p.rps)) return;
-      const duplicateColors = [...new Set(G.players.map(p => p.preferredColor).filter((c, i, a) => c && a.indexOf(c) !== i))];
-      const palette = ['coral', 'jade', 'sun', 'lavender'];
-      for (const color of duplicateColors) {
-        const involved = G.players.filter(p => p.preferredColor === color);
-        const beats = { rock:'scissors', paper:'rock', scissors:'paper' };
-        const winners = involved.filter(p => involved.every(q => p === q || (p.rps === q.rps ? true : beats[p.rps] === q.rps)));
-        const winner = winners.length === 1 ? winners[0] : involved[Math.floor(random.Number() * involved.length)];
-        involved.filter(p => p !== winner).forEach(p => { const available = palette.filter(c => !G.players.some(q => q !== p && q.color === c)); p.color = available[Math.floor(random.Number() * available.length)] || palette[Math.floor(random.Number() * 4)]; });
-      }
-      G.players.forEach(p => { p.color ||= palette[Math.floor(random.Number() * palette.length)]; p.rps = null; });
       beginRound(G, ctx, random, events, true);
     },
     AdvanceRound: ({ G, playerID, ctx, random, events }) => {
@@ -203,7 +186,6 @@ export const TikiTopple = {
       const remaining = G.players.filter(pl => pl.joined);
       if (String(G.hostID) === String(playerID) && remaining[0]) G.hostID = String(G.players.indexOf(remaining[0]));
       if (remaining.length < 2) { G.phase = 'gameEnd'; G.gameWinner = null; events.setActivePlayers({ all: 'lobby' }); }
-      else if (G.phase === 'rps') { G.phase = 'lobby'; G.players.forEach(pl => { pl.rps = null; }); events.setActivePlayers({ all: 'lobby' }); }
       else if (G.phase === 'playing' && ctx.currentPlayer === playerID) events.endTurn();
       else if (G.phase === 'gameEnd' && G.gameWinner !== null && remaining.length >= 2 && remaining.every(pl => pl.continue === true)) {
         const nextID = String(G.players.indexOf(remaining[0]));
@@ -221,8 +203,7 @@ function beginRound(G, ctx, random, events, first) {
     p.secret = shuffled(TIKIS.map((_, n) => n), random).slice(0, 3);
     p.roundScore = 0; p.roundPlays = 0; p.emoji = null;
     p.position = { ...START_POSITIONS[i] };
-    // Same-color picks are decided by the RPS winner, then remaining conflicts get an unused color.
-    if (!p.color) p.color = p.preferredColor || ['coral', 'jade', 'sun', 'lavender'][i];
+    if (!p.color) p.color = ['coral', 'jade', 'sun', 'lavender'][i];
   });
   G.board = shuffled(TIKIS.map((tiki, id) => ({ id, ...tiki, active: true })), random);
   G.removed = []; G.played = []; G.roundTurn = 0; G.lastMove = null; G.lastPush = null; G.pushCount = 0;

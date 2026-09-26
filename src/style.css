@@ -177,3 +177,16 @@
 .shrine-mode .scene-actions{top:133px;bottom:auto;right:10px}.shrine-mode .scene-quick{top:225px;bottom:auto;right:10px;flex-direction:column;border-radius:18px}
 @media(max-width:760px){.shrine-mode .scene-secret{width:275px;max-width:calc(100% - 94px)}.shrine-mode .scene-actions{top:126px;right:7px}.shrine-mode .scene-quick{top:219px;right:7px}.shrine-mode .walk-tip{bottom:89px;max-width:48%}.scene-swap-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.scene-swap-picker{bottom:82px;padding:8px}.scene-swap-head{height:58px}.scene-card-dock{width:calc(100% - 10px);gap:3px}.scene-card-dock .action-card{flex-basis:43px;height:67px}.scene-action-button{flex-basis:91px;font-size:11px}}
 @media(max-width:430px){.shrine-mode .scene-secret{width:270px;max-width:calc(100% - 94px)}.scene-secret-score{font-size:9px;padding-right:5px}.scene-secret-score b{font-size:11px}.scene-card-dock .action-card{flex-basis:40px;height:65px}.scene-card-dock .action-card b{font-size:8px}.scene-card-dock .action-card i{font-size:17px}.scene-card-dock .action-card small{font-size:6px}.scene-action-button{flex-basis:84px;font-size:10px}.scene-swap-head .tiki-portrait{width:38px;height:38px}.shrine-mode .scene-quick{top:213px}}
+
+/* Keep ladder navigation clear; attack and quick speech share the rail below it. */
+.shrine-mode .scene-actions{top:164px}
+.shrine-mode .scene-quick{top:258px}
+.scene-swap-picker{bottom:7px;width:min(670px,calc(100% - 18px));height:84px;padding:18px 8px 5px;display:flex;flex-direction:row;align-items:flex-end;gap:5px}
+.scene-swap-title{position:absolute;top:4px;left:8px;right:8px;margin:0;font-size:10px}
+.scene-swap-title span{font-size:9px}
+.scene-swap-grid{display:flex;flex:1 1 auto;flex-wrap:nowrap;gap:3px;min-width:0;overflow-x:auto;overflow-y:hidden;padding:6px 1px 0;scrollbar-width:thin;scrollbar-color:#f6daa4a0 transparent}
+.scene-swap-head{flex:1 0 52px;height:59px}
+.scene-swap-head .tiki-portrait{width:38px;height:38px}
+.scene-swap-picker .swap-confirm{flex:0 0 108px;height:48px;margin:0}
+@media(max-width:760px){.shrine-mode .scene-actions{top:154px}.shrine-mode .scene-quick{top:245px}.scene-swap-picker{bottom:7px;width:calc(100% - 10px);padding:18px 5px 5px}.scene-swap-head{flex:0 0 49px;height:56px}.scene-swap-head .tiki-portrait{width:35px;height:35px}.scene-swap-picker .swap-confirm{flex-basis:88px}}
+@media(max-width:430px){.shrine-mode .scene-actions{top:152px}.shrine-mode .scene-quick{top:240px}.scene-swap-head{flex-basis:46px}.scene-swap-head .tiki-portrait{width:34px;height:34px}}

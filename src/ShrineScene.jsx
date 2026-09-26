@@ -18,11 +18,11 @@ function scoreboardTexture(players, backdrop) {
 
 function label(text) {
   const canvas = document.createElement('canvas'); canvas.width = 1024; canvas.height = 256;
-  const ctx = canvas.getContext('2d'); ctx.scale(2,2); ctx.fillStyle = '#102c26'; ctx.beginPath(); ctx.roundRect(5, 5, 502, 118, 22); ctx.fill();
+  const ctx = canvas.getContext('2d'); ctx.scale(2,2); ctx.fillStyle = 'rgba(16,44,38,.3)'; ctx.beginPath(); ctx.roundRect(5, 5, 502, 118, 22); ctx.fill();
   ctx.strokeStyle = '#f4d796'; ctx.lineWidth = 6; ctx.stroke(); ctx.fillStyle = '#fff9e9';
   ctx.font = '800 45px "Noto Sans TC", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(text).slice(0, 23), 256, 64, 470);
   const map = new THREE.CanvasTexture(canvas); map.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, opacity: .94, depthTest: false }));
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, opacity: 1, depthTest: false }));
   sprite.scale.set(2.1, .52, 1); sprite.renderOrder = 15; return sprite;
 }
 
