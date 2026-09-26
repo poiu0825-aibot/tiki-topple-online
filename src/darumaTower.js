@@ -5,6 +5,25 @@ export const TOWER_POSITION = { x: 6.55, z: -0.55 };
 const LAYER_HEIGHT = 1.18;
 const MODEL_SCALE = 0.58;
 const SCORE_COLORS = ['#ffe19a', '#d8e5e3', '#eab98b'];
+export const DARUMA_GLYPHS = ['勝', '安', '優', '穩', '活', '平', '日', '月', '喜'];
+export const DARUMA_GLYPH_INKS = ['#453360', '#263e69', '#723547', '#274a3f', '#4d2e60', '#7a3b2b', '#443d79', '#274c62', '#663252'];
+export const DARUMA_HEAD_NAMES = ['Sleepy', 'EyeRoll', 'Smile', 'Angry', 'Smirk', 'Sweat', 'Wink', 'Surprised', 'Neutral'];
+
+export function decorateDarumaHead(head, id) {
+  if (!head || head.userData.glyphDecorated) return head;
+  head.traverse(child => { if (child.name.endsWith('_insignia')) child.visible = false; });
+  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+  ctx.font = '900 176px "Noto Serif TC", "Microsoft JhengHei", serif';
+  ctx.lineWidth = 13; ctx.strokeStyle = '#f9dfa0'; ctx.strokeText(DARUMA_GLYPHS[id], 128, 136);
+  ctx.fillStyle = DARUMA_GLYPH_INKS[id]; ctx.fillText(DARUMA_GLYPHS[id], 128, 136);
+  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+  const glyph = new THREE.Mesh(new THREE.PlaneGeometry(.43, .43), new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+  glyph.name = `DarumaGlyph_${id}`; glyph.position.set(0, .31, .59); glyph.renderOrder = 2;
+  head.add(glyph); head.userData.glyphDecorated = true;
+  return head;
+}
 
 function rankSprite(rank) {
   const canvas = document.createElement('canvas');
@@ -76,8 +95,9 @@ export function createDarumaTower(scene, position = TOWER_POSITION, options = {}
     model.traverse((object) => { if (object.isMesh) { object.castShadow = true; object.receiveShadow = true; } });
     stage.add(model);
     for (let id = 0; id < 9; id++) {
-      const head = model.getObjectByName(`Tiki_${String(id).padStart(2, '0')}_${['Sleepy', 'EyeRoll', 'Smile', 'Angry', 'Smirk', 'Sweat', 'Wink', 'Surprised', 'Neutral'][id]}`);
+      const head = model.getObjectByName(`Tiki_${String(id).padStart(2, '0')}_${DARUMA_HEAD_NAMES[id]}`);
       if (head) {
+        decorateDarumaHead(head, id);
         const flashMaterials = new Set();
         head.traverse(child => {
           if (!child.isMesh) return;

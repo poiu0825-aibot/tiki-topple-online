@@ -29,9 +29,9 @@ export const TikiToppleShrine = {
     targetScore: Math.max(1, Math.min(60, Number(setupData?.targetScore) || 30)),
     hostID: '0', round: 1, phase: 'lobby',
     backdropIndex: Math.floor(random.Number() * 5),
-    players: Array.from({ length: ctx.numPlayers }, (_, i) => ({ name: `玩家 ${i + 1}`, joined: false, color: null, preferredColor: null, hand: [], secret: [], total: 0, roundScore: 0, roundPlays: 0, idleMs: 0, rps: null, emoji: null, continue: null, position: { ...SHRINE_START[i] }, ladderRank: null, lastAttackAt: 0 })),
+    players: Array.from({ length: ctx.numPlayers }, (_, i) => ({ name: `玩家 ${i + 1}`, joined: false, profileReady: false, avatarTikiId: null, color: null, preferredColor: null, hand: [], secret: [], total: 0, roundScore: 0, roundPlays: 0, idleMs: 0, rps: null, emoji: null, continue: null, position: { ...SHRINE_START[i] }, ladderRank: null, lastAttackAt: 0 })),
     board: shuffled(TIKIS.map((tiki, id) => ({ id, ...tiki, active: true })), random),
-    played: [], removed: [], lastMove: null, lastPush: null, lastAttack: null, lastCrow: null, nextCrowAt: Date.now() + 5000, attackCount: 0, crowCount: 0, pushCount: 0, roundStarter: 0, roundTurn: 0, turnStartedAt: null, turnEndsAt: null, idleRestart: null, gameWinner: null,
+    played: [], removed: [], lastMove: null, lastPush: null, lastAttack: null, lastCrow: null, nextCrowAt: Date.now() + 5000, attackCount: 0, crowCount: 0, pushCount: 0, roundStarter: 0, roundTurn: 0, turnStartedAt: null, turnEndsAt: null, roundEndAt: null, idleRestart: null, gameWinner: null,
   }),
   playerView: ({ G, playerID }) => ({ ...G, players: G.players.map((p, i) => ({ ...p, hand: String(i) === String(playerID) ? p.hand : [], secret: String(i) === String(playerID) ? p.secret : [] })) }),
   turn: {
@@ -49,17 +49,21 @@ export const TikiToppleShrine = {
     },
     stages: {
       lobby: { moves: {
-        SetProfile: ({ G, playerID }, profile) => { const p = G.players[playerIndex(playerID)]; if (!p || !['lobby', 'roundEnd'].includes(G.phase)) return; p.joined = true; p.name = String(profile.name || p.name).trim().slice(0, 20) || p.name; p.preferredColor = profile.color || null; p.color = profile.color || null; },
+        SetProfile: ({ G, playerID }, profile) => { const p = G.players[playerIndex(playerID)]; if (!p || G.phase !== 'lobby') return; p.joined = true; p.name = String(profile.name || p.name).trim().slice(0, 20) || p.name; p.preferredColor = profile.color || null; p.color = profile.color || null; if (Number.isInteger(profile.avatarTikiId) && profile.avatarTikiId >= 0 && profile.avatarTikiId < 9) p.avatarTikiId = profile.avatarTikiId; if (profile.ready !== undefined) p.profileReady = Boolean(profile.ready); },
+        UpdateIdentity: (...args) => TikiToppleShrine.moves.UpdateIdentity(...args),
         StartGame: (...args) => TikiToppleShrine.moves.StartGame(...args),
         ContinueNext: (...args) => TikiToppleShrine.moves.ContinueNext(...args),
+        AdvanceRound: (...args) => TikiToppleShrine.moves.AdvanceRound(...args),
         LeaveGame: (...args) => TikiToppleShrine.moves.LeaveGame(...args),
       } },
       rps: { moves: {
         PickRps: ({ G, playerID }, hand) => { const p = G.players[playerIndex(playerID)]; if (p && ['rock', 'paper', 'scissors'].includes(hand)) p.rps = hand; },
+        UpdateIdentity: (...args) => TikiToppleShrine.moves.UpdateIdentity(...args),
         ResolveRps: (...args) => TikiToppleShrine.moves.ResolveRps(...args),
         LeaveGame: (...args) => TikiToppleShrine.moves.LeaveGame(...args),
       } },
       play: { moves: {
+        UpdateIdentity: (...args) => TikiToppleShrine.moves.UpdateIdentity(...args),
         SetLadderRank: ({ G, playerID }, rank) => {
           const p = G.players[playerIndex(playerID)];
           const active = G.board.filter(t => t.active);
@@ -231,8 +235,14 @@ export const TikiToppleShrine = {
     },
   },
   moves: {
+    UpdateIdentity: ({ G, playerID }, profile) => {
+      const p = G.players[playerIndex(playerID)]; if (!p?.joined) return;
+      const requested = String(profile?.name || '').trim().slice(0, 20);
+      if (requested) p.name = requested;
+      if (Number.isInteger(profile?.avatarTikiId) && profile.avatarTikiId >= 0 && profile.avatarTikiId < 9) p.avatarTikiId = profile.avatarTikiId;
+    },
     StartGame: ({ G, playerID, ctx, random, events }, scoreGoal) => {
-      if (playerID !== G.hostID || G.phase !== 'lobby' || G.players.filter(p => p.joined).length < 2) return;
+      if (playerID !== G.hostID || G.phase !== 'lobby' || G.players.filter(p => p.joined).length < 2 || G.players.some(p => p.joined && !p.profileReady)) return;
       G.targetScore = Math.max(1, Math.min(60, Number(scoreGoal) || G.targetScore));
       const palette = ['coral', 'jade', 'sun', 'lavender'];
       const chosen = G.players.map(p => p.preferredColor).filter(Boolean);
@@ -258,19 +268,27 @@ export const TikiToppleShrine = {
       G.players.forEach(p => { p.color ||= palette[Math.floor(random.Number() * palette.length)]; p.rps = null; });
       beginRound(G, ctx, random, events, true);
     },
+    AdvanceRound: ({ G, playerID, ctx, random, events }) => {
+      if (G.phase !== 'roundEnd' || !G.players[playerIndex(playerID)]?.joined || !G.roundEndAt || Date.now() < G.roundEndAt) return;
+      if (G.players.filter(p => p.joined).length < 2) { G.phase = 'gameEnd'; G.gameWinner = null; events.setActivePlayers({ all: 'lobby' }); return; }
+      G.round++; G.roundStarter = (G.roundStarter + 1) % G.players.length;
+      for (let i = 0; i < G.players.length && !G.players[G.roundStarter].joined; i++) G.roundStarter = (G.roundStarter + 1) % G.players.length;
+      beginRound(G, ctx, random, events, false);
+    },
     ContinueNext: ({ G, playerID, ctx, random, events }, stay) => {
-      if (G.phase !== 'roundEnd') return;
+      if (G.phase !== 'gameEnd' || G.gameWinner === null) return;
       const p = G.players[playerIndex(playerID)]; if (!p?.joined) return;
       p.continue = Boolean(stay);
       if (!stay) p.joined = false;
       const stillHere = G.players.filter(pl => pl.joined);
       if (stillHere.some(pl => pl.continue === null)) return;
       const continuing = stillHere.filter(pl => pl.continue === true);
-      if (continuing.length < 2) { G.phase = 'gameEnd'; G.gameWinner = null; events.setActivePlayers({ all: 'lobby' }); return; }
-      G.players.forEach(pl => { if (pl.joined) pl.continue = null; });
-      G.round++; G.roundStarter = (G.roundStarter + 1) % G.players.length;
-      for (let i = 0; i < G.players.length && !G.players[G.roundStarter].joined; i++) G.roundStarter = (G.roundStarter + 1) % G.players.length;
-      beginRound(G, ctx, random, events, false);
+      if (continuing.length < 2) { G.gameWinner = null; events.setActivePlayers({ all: 'lobby' }); return; }
+      G.players.forEach(pl => { pl.continue = null; pl.total = 0; pl.roundScore = 0; pl.idleMs = 0; });
+      G.round = 1; G.gameWinner = null; G.roundStarter = G.players.findIndex(pl => pl.joined);
+      G.hostID = G.players[G.hostID]?.joined ? G.hostID : String(G.roundStarter);
+      G.backdropIndex = Math.floor(random.Number() * 5);
+      beginRound(G, ctx, random, events, true);
     },
     LeaveGame: ({ G, playerID, ctx, random, events }) => {
       const p = G.players[playerIndex(playerID)]; if (!p?.joined) return;
@@ -280,7 +298,7 @@ export const TikiToppleShrine = {
       if (remaining.length < 2) { G.idleRestart = null; G.turnEndsAt = null; G.phase = 'gameEnd'; G.gameWinner = null; events.setActivePlayers({ all: 'lobby' }); }
       else if (G.phase === 'rps') { G.phase = 'lobby'; G.players.forEach(pl => { pl.rps = null; }); events.setActivePlayers({ all: 'lobby' }); }
       else if (G.phase === 'playing' && ctx.currentPlayer === playerID && !G.idleRestart) events.endTurn();
-      else if (G.phase === 'roundEnd' && remaining.length >= 2 && remaining.every(pl => pl.continue === true)) {
+      else if (G.phase === 'gameEnd' && G.gameWinner !== null && remaining.length >= 2 && remaining.every(pl => pl.continue === true)) {
         const nextID = String(G.players.indexOf(remaining[0]));
         TikiToppleShrine.moves.ContinueNext({ G, playerID: nextID, ctx, random, events }, true);
       }
@@ -301,7 +319,7 @@ function beginRound(G, ctx, random, events, first) {
   });
   G.board = shuffled(TIKIS.map((tiki, id) => ({ id, ...tiki, active: true })), random);
   G.removed = []; G.played = []; G.roundTurn = 0; G.lastMove = null; G.lastPush = null; G.lastAttack = null; G.lastCrow = null; G.nextCrowAt = Date.now() + 5000; G.pushCount = 0;
-  G.phase = 'playing'; if (first) G.roundStarter = Math.max(0, G.players.findIndex(p => p.joined));
+  G.phase = 'playing'; G.roundEndAt = null; if (first) G.roundStarter = Math.max(0, G.players.findIndex(p => p.joined));
   G.turnStartedAt = Date.now(); G.turnEndsAt = G.turnStartedAt + 30000;
   events.setActivePlayers({ all: 'play' }); events.endTurn({ next: String(G.roundStarter) });
 }
@@ -315,5 +333,6 @@ function scoreRound(G, events) {
   const winner = G.players.find(p => p.joined && p.total >= G.targetScore);
   G.gameWinner = winner ? G.players.indexOf(winner) : null;
   G.phase = winner ? 'gameEnd' : 'roundEnd';
+  G.roundEndAt = winner ? null : Date.now() + 4000;
   events.setActivePlayers({ all: 'lobby' });
 }
